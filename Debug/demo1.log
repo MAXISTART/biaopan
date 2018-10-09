@@ -1,0 +1,16 @@
+﻿  Main.cpp
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(218): warning C4244: “参数”: 从“const float”转换到“_Tp”，可能丢失数据
+          with
+          [
+              _Tp=int
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(227): warning C4244: “参数”: 从“const float”转换到“_Tp”，可能丢失数据
+          with
+          [
+              _Tp=int
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(244): warning C4018: “<”: 有符号/无符号不匹配
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(247): warning C4018: “<”: 有符号/无符号不匹配
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(437): warning C4305: “初始化”: 从“double”到“float”截断
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(629): warning C4018: “<”: 有符号/无符号不匹配
+  demo1.vcxproj -> D:\VcProject\biaopan\demo1\demo1\Debug\demo1.exe
