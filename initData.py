@@ -11,9 +11,13 @@ import numpy as np
 # print(order)
 readBasePath = r'D:\VcProject\biaopan\data\goodImgs'
 dirs = os.listdir(readBasePath)
-startFolder = 35
-sort_dirs = [str(e) for e in range(startFolder, len(dirs) + 1)]
-
+# 最后会会和所有之前的txt文件成为一个最终txt文件
+lastOutputPath = r'D:\VcProject\biaopan\data\labels.txt'
+startFolder = 460
+sort_dirs = []
+for fol in sorted([int(d) for d in dirs]):
+    if fol >= startFolder:
+        sort_dirs.append(str(fol))
 
 for dir in sort_dirs:
     print('当前dir是： ', dir)
@@ -46,6 +50,7 @@ for dir in sort_dirs:
             f = open(os.path.join(spath, 'label.txt'), 'a')
             f.writelines([mserpaths[i] + '===' + str(labels[i]) + '\n' for i in range(0, maxsize)])
             f.close()
+            print('正在进入下一个文件-------------------')
             break
         elif order in range(48, 58):
             # 如果不是以上的指令，那就是要打标记
@@ -54,4 +59,13 @@ for dir in sort_dirs:
             print('标记为---', label)
         else:
             labels[mserIndex] = -1
-            print('标记为---', label)
+            print('标记为---', -1)
+
+
+out = open(lastOutputPath, 'a')
+# 最后汇合之前的label文件
+for dir in sorted([int(d) for d in dirs]):
+    spath = os.path.join(readBasePath, str(dir), 'label.txt')
+    f = open(spath, 'r')
+    out.writelines(f.readlines())
+f.close()
