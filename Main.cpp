@@ -31,7 +31,10 @@ last update: 23/12/2014
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/features2d.hpp"
+#include <opencv2/ml/ml.hpp>
 
+
+#define DATA_DIR "D:\\OpenCV\\bin\\toy_data\\"
 #define pi 3.1415926
 
 using namespace std;
@@ -714,15 +717,15 @@ void frontSearch(vector<bool>& isVisited, vector<int>& fronts, vector<int>& goal
 }
 
 
-// Test on single image
-int main3()
+// 检测一张图片的各种参数，main函数
+int main1()
 {
 	string images_folder = "D:\\VcProject\\biaopan\\imgs\\";
 	string out_folder = "D:\\VcProject\\biaopan\\imgs\\";
 	vector<string> names;
 
 	//glob(images_folder + "Lo3my4.*", names);
-	names.push_back("D:\\VcProject\\biaopan\\imgs\\003.jpg");
+	names.push_back("D:\\VcProject\\biaopan\\imgs\\004.jpg");
 	int scaleSize = 8;
 	for (const auto& image_name : names)
 	{
@@ -1174,6 +1177,15 @@ string int2str(const int &int_temp)
 	return stream.str();   //此处也可以用 stream>>string_temp  
 }
 
+int str2int(const string &string_temp)
+{
+	stringstream ss;
+	ss << string_temp;
+	int i;
+	ss >> i;
+	return i;
+}
+
 vector<string> readTxt(string file)
 {
 	ifstream infile;
@@ -1209,6 +1221,170 @@ vector<string> splitString(const std::string& s, const std::string& c)
 	return v;
 }
 
+
+
+// 获取一个cell的向量，dn是指有多少个方向
+vector<float> getCellData(Mat& mag, Mat& angle, int r, int c, int cellSize, int dn)
+{
+	vector<float> cell(dn, 0);
+	float tangle = 360 / (float)dn;
+	for (int k = r; k < r + cellSize; k++)
+	{
+		// 每一行图像的指针
+		const float* magData = mag.ptr<float>(k);
+		const float* angleData = angle.ptr<float>(k);
+		for (int i = c; i < c + cellSize; i++)
+		{
+			// cout << angleData[i] << endl;
+			// floor 是向上取整
+			cell[floor(angleData[i] / tangle)] += magData[i];
+		}
+	}
+	return cell;
+}
+
+
+// 获取hog向量
+vector<float> getHogData(Mat& originImg)
+{
+	Mat img;
+	// 进行resize
+	resize(originImg, img,Size(18, 36));
+	// 这里可以考虑归一化，也就是第三个参数可以设置为1/255，使0~255映射成0到1
+	img.convertTo(img, CV_32F, 1);
+	Mat gx, gy;
+	Sobel(img, gx, CV_32F, 1, 0, 1);
+	Sobel(img, gy, CV_32F, 0, 1, 1);
+
+	Mat mag, angle;
+	cartToPolar(gx, gy, mag, angle, 1);
+	
+	// 对每个cell都进行直方图统计
+	vector<vector<float>> cells;
+	int cellSize = 9;
+	int directionNum = 12;
+	for (int i=0;i<4;i++)
+	{
+		cells.push_back(getCellData(mag, angle, i * 9, 0, cellSize, directionNum));
+		cells.push_back(getCellData(mag, angle, 9, i * 9, cellSize, directionNum));
+	}
+
+	// 把3个block都整合成一个vector
+	vector<float> hogData;
+	// 每四个cell做一个block，最后串联起来
+	// 第一层是控制第几个block
+	for (int i=0;i<3;i++)
+	{
+		// 存储每个block的vector
+		vector<float> v;
+		float total = 0;
+		// 第二层是控制block中的第几个cell
+		for (int j=i*2;j<i*2+4;j++)
+		{
+			// 控制每个cell里面的每个float值
+			for (int k=0;k<cells[j].size();k++)
+			{
+				// 计算一个block里面的L2模外还需要把四个vector整合在一起
+				total += pow(cells[j][k], 2);
+				v.push_back(cells[j][k]);
+			}
+		}
+		// 根据之前算出来block里面的L2模，对之前push进去的进行归一化
+		for (int e=0;e<v.size();e++) 
+		{
+			hogData.push_back(v[e] / total);
+		}
+	}
+	return hogData;
+}
+
+
+
+// 做svmdata用于训练
+int main()
+{
+	string modelPath = "D:\\VcProject\\biaopan\\data\\model.txt";
+	string labelPath = "D:\\VcProject\\biaopan\\data\\labels.txt";
+	// 存储 图片存储路径 还有 对应的label
+	vector<string> raws = readTxt(labelPath);
+	// 存储每张图片的特征向量以及label
+	vector<vector<float>> trainingData;
+	vector<int> labels;
+	// 字符串的分割标识
+	const string spliter = "==";
+	// 这里只训练28800个数据，其余用来测试
+	for (int i=0;i<28800;i++)
+	{
+		// 对于一张图片
+		vector<string> raw = splitString(raws[i], spliter);
+		string src = raw[0];
+		int label = str2int(raw[1]);
+		Mat mat = imread(src, IMREAD_GRAYSCALE);
+		// 存储一个hog向量
+		// vector<float> descriptors;//HOG描述子向量
+		// descriptors = getHogData(mat);
+		// descriptors;
+		trainingData.push_back(getHogData(mat));
+		labels.push_back(label);
+	}
+
+
+	//设置支持向量机的参数（Set up SVM's parameters）
+
+	Ptr<cv::ml::SVM> svm = ml::SVM::create();
+
+	svm->setType(cv::ml::SVM::C_SVC);
+	svm->setKernel(cv::ml::SVM::LINEAR);
+	svm->setTermCriteria(TermCriteria(TermCriteria::MAX_ITER, 100, 1e-6));
+	svm->setC(0.01);
+	svm->setGamma(5.383);
+
+
+
+
+	// 准备好数据
+	// 一张图片的特征向量是144维
+	const int feature_length{ 144 };
+	const int samples_count{ (int)trainingData.size() };
+	if (labels.size() != trainingData.size())
+	{
+		cout << "数据导出有问题" << endl;
+		return 0;
+	}
+
+	vector<float> data(samples_count * feature_length, 0.f);
+	for (int i = 0; i < samples_count; ++i) {
+		for (int j = 0; j < feature_length; ++j) {
+			data[i*feature_length + j] = trainingData[i][j];
+		}
+	}
+
+	Mat trainingDataMat(samples_count, feature_length, CV_32FC1, data.data());
+	Mat labelsMat((int)samples_count, 1, CV_32SC1, (int*)labels.data());
+	labelsMat;
+	trainingDataMat;
+	cout << "开始训练" << endl;
+	// 训练
+	svm->trainAuto(trainingDataMat, ml::ROW_SAMPLE, labelsMat);
+
+
+	// 测试
+	
+	Mat s1 = imread("D:\\VcProject\\biaopan\\data\\goodImgs\\457\\33.jpg", IMREAD_GRAYSCALE);
+	imshow("s1", s1);
+	waitKey(0);
+	vector<float> ss = getHogData(s1);
+	Mat testData(1, feature_length, CV_32FC1, ss.data());
+	int response = svm->predict(testData);
+	cout << "结果是 : " << response << endl;
+	// 生成模型文件
+	svm->save(modelPath);
+
+	return 0;
+}
+
+
+// 同样是做单体数据的测试
 int test() 
 {
 	string a = int2str(1);
@@ -1415,8 +1591,8 @@ void writeImg(string imgReadPath, string dirPath)
 }
 
 
-
-int main4()
+// 制作数据的单体测试
+int test4()
 {
 	vector<string> aa;
 
@@ -1433,8 +1609,8 @@ int main4()
 
 
 
-// 这里仅仅是用作制作数据
-int main()
+// 制作mser数据
+int makeMserData()
 {
 
 
