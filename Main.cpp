@@ -718,7 +718,7 @@ void frontSearch(vector<bool>& isVisited, vector<int>& fronts, vector<int>& goal
 
 
 // 检测一张图片的各种参数，main函数
-int main1()
+int main()
 {
 	string images_folder = "D:\\VcProject\\biaopan\\imgs\\";
 	string out_folder = "D:\\VcProject\\biaopan\\imgs\\";
@@ -1228,6 +1228,7 @@ vector<float> getCellData(Mat& mag, Mat& angle, int r, int c, int cellSize, int 
 {
 	vector<float> cell(dn, 0);
 	float tangle = 360 / (float)dn;
+
 	for (int k = r; k < r + cellSize; k++)
 	{
 		// 每一行图像的指针
@@ -1235,8 +1236,9 @@ vector<float> getCellData(Mat& mag, Mat& angle, int r, int c, int cellSize, int 
 		const float* angleData = angle.ptr<float>(k);
 		for (int i = c; i < c + cellSize; i++)
 		{
-			// cout << angleData[i] << endl;
 			// floor 是向上取整
+			// cout << angleData[i] << endl;		
+			// cout << magData[i] << endl;
 			cell[floor(angleData[i] / tangle)] += magData[i];
 		}
 	}
@@ -1259,6 +1261,7 @@ vector<float> getHogData(Mat& originImg)
 	Mat mag, angle;
 	cartToPolar(gx, gy, mag, angle, 1);
 	
+
 	// 对每个cell都进行直方图统计
 	vector<vector<float>> cells;
 	int cellSize = 9;
@@ -1292,7 +1295,7 @@ vector<float> getHogData(Mat& originImg)
 		// 根据之前算出来block里面的L2模，对之前push进去的进行归一化
 		for (int e=0;e<v.size();e++) 
 		{
-			hogData.push_back(v[e] / total);
+			hogData.push_back(v[e] / sqrt(total));
 		}
 	}
 	return hogData;
@@ -1301,7 +1304,7 @@ vector<float> getHogData(Mat& originImg)
 
 
 // 做svmdata用于训练
-int main()
+int train()
 {
 	string modelPath = "D:\\VcProject\\biaopan\\data\\model.txt";
 	string labelPath = "D:\\VcProject\\biaopan\\data\\labels.txt";
@@ -1311,7 +1314,7 @@ int main()
 	vector<vector<float>> trainingData;
 	vector<int> labels;
 	// 字符串的分割标识
-	const string spliter = "==";
+	const string spliter = "===";
 	// 这里只训练28800个数据，其余用来测试
 	for (int i=0;i<28800;i++)
 	{
@@ -1328,18 +1331,18 @@ int main()
 		labels.push_back(label);
 	}
 
-
 	//设置支持向量机的参数（Set up SVM's parameters）
 
 	Ptr<cv::ml::SVM> svm = ml::SVM::create();
 
 	svm->setType(cv::ml::SVM::C_SVC);
 	svm->setKernel(cv::ml::SVM::LINEAR);
-	svm->setTermCriteria(TermCriteria(TermCriteria::MAX_ITER, 100, 1e-6));
-	svm->setC(0.01);
-	svm->setGamma(5.383);
-
-
+	// svm->setTermCriteria(TermCriteria(TermCriteria::MAX_ITER, 100, 1e-6));
+	svm->setTermCriteria(cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 1000, FLT_EPSILON));
+	// svm->setTermCriteria(cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 200, 1e-6));
+	// svm->setDegree(1.0);
+	svm->setC(2.67);
+	svm->setGamma(5.83);
 
 
 	// 准备好数据
@@ -1360,13 +1363,13 @@ int main()
 	}
 
 	Mat trainingDataMat(samples_count, feature_length, CV_32FC1, data.data());
-	Mat labelsMat((int)samples_count, 1, CV_32SC1, (int*)labels.data());
-	labelsMat;
-	trainingDataMat;
+	Mat labelsMat((int)samples_count, 1, CV_32S, (int*)labels.data());
+
 	cout << "开始训练" << endl;
 	// 训练
-	svm->trainAuto(trainingDataMat, ml::ROW_SAMPLE, labelsMat);
-
+	svm->train(trainingDataMat, ml::ROW_SAMPLE, labelsMat);
+	// 生成模型文件
+	svm->save(modelPath);
 
 	// 测试
 	
@@ -1377,15 +1380,69 @@ int main()
 	Mat testData(1, feature_length, CV_32FC1, ss.data());
 	int response = svm->predict(testData);
 	cout << "结果是 : " << response << endl;
-	// 生成模型文件
-	svm->save(modelPath);
+
 
 	return 0;
 }
 
+// 下面单体测试结果
+int singleTest()
+{
+	string modelPath = "D:\\VcProject\\biaopan\\data\\model.txt";
+	Ptr<cv::ml::SVM> svm = cv::ml::SVM::load(modelPath);
+	Mat s1 = imread("D:\\VcProject\\biaopan\\data\\goodImgs\\454\\66.jpg", IMREAD_GRAYSCALE);
+
+	vector<float> ss = getHogData(s1);
+	Mat testData(1, 144, CV_32FC1, ss.data());
+	int response = svm->predict(testData);
+	cout << "结果是 : " << response << endl;
+	cout << "end" << endl;
+	return 0;
+}
+
+// 算出准确率
+int batchTest()
+{
+	string modelPath = "D:\\VcProject\\biaopan\\data\\model.txt";
+	string labelPath = "D:\\VcProject\\biaopan\\data\\labels.txt";
+
+	Ptr<cv::ml::SVM> svm = cv::ml::SVM::load(modelPath);
+	// 存储 图片存储路径 还有 对应的label
+	vector<string> raws = readTxt(labelPath);
+
+	vector<int> labels;
+	// 字符串的分割标识
+	const string spliter = "===";
+	// 这里只训练28800个数据，其余用来测试
+	int totalNum = 0;
+	int correct = 0;
+	for (int i = 28800; i < raws.size(); i++)
+	{
+		// 对于一张图片
+		vector<string> raw = splitString(raws[i], spliter);
+		string src = raw[0];
+		int label = str2int(raw[1]);
+		Mat mat = imread(src, IMREAD_GRAYSCALE);
+		// 存储一个hog向量
+		// vector<float> descriptors;//HOG描述子向量
+		// descriptors = getHogData(mat);
+		// descriptors;
+		vector<float> ss = getHogData(mat);
+		Mat testData(1, 144, CV_32FC1, ss.data());
+		int response = svm->predict(testData);
+		if (response == label)
+			correct += 1;
+		totalNum += 1;
+	}
+	cout << "准确率是 : " << correct / (float)totalNum << endl;
+	cout << "end" << endl;
+	return 0;
+}
+
+
 
 // 同样是做单体数据的测试
-int test() 
+int randomTest() 
 {
 	string a = int2str(1);
 	cout << "a: " << a << endl;

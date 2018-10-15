@@ -105,7 +105,9 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1156): warning C4244: “参数�
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1240): warning C4244: “参数”: 从“float”转换到“const unsigned __int64”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1377): warning C4244: “初始化”: 从“float”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1483): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1256): warning C4244: “参数”: 从“float”转换到“const unsigned __int64”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1395): warning C4244: “初始化”: 从“float”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1411): warning C4244: “初始化”: 从“float”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1446): warning C4244: “初始化”: 从“float”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1555): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
   demo1.vcxproj -> D:\VcProject\biaopan\demo1\demo1\x64\Debug\demo1.exe
