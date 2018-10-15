@@ -33,6 +33,9 @@ last update: 23/12/2014
 #include "opencv2/features2d.hpp"
 #include <opencv2/ml/ml.hpp>
 
+#include<time.h>
+#define random(x) (rand()%x)+1
+
 
 #define DATA_DIR "D:\\OpenCV\\bin\\toy_data\\"
 #define pi 3.1415926
@@ -632,13 +635,148 @@ std::vector<cv::Rect> mser(cv::Mat srcImage)
 		// 面积
 		int b_size = br.width * br.height;
 		// 不符合尺寸条件判断
-		if (b_size < 600 && b_size > 150)
-		keeps.push_back(br);
+		if (b_size < 600 && b_size > 200)
+			keeps.push_back(br);
 	}
 	// 用nms抑制
 	nms(keeps, 0.5);
 	return  keeps;
 }
+
+
+
+string int2str(const int &int_temp)
+{
+	stringstream stream;
+	stream << int_temp;
+	return stream.str();   //此处也可以用 stream>>string_temp  
+}
+
+int str2int(const string &string_temp)
+{
+	stringstream ss;
+	ss << string_temp;
+	int i;
+	ss >> i;
+	return i;
+}
+
+vector<string> readTxt(string file)
+{
+	ifstream infile;
+	infile.open(file.data());   //将文件流对象与文件连接起来 
+	assert(infile.is_open());   //若失败,则输出错误消息,并终止程序运行 
+
+	vector<string> names;
+	string s;
+	while (getline(infile, s))
+	{
+		names.push_back(s);
+	}
+	infile.close();             //关闭文件输入流 
+	return names;
+}
+
+// 分割字符串
+vector<string> splitString(const std::string& s, const std::string& c)
+{
+	std::vector<std::string> v;
+	std::string::size_type pos1, pos2;
+	pos2 = s.find(c);
+	pos1 = 0;
+	while (std::string::npos != pos2)
+	{
+		v.push_back(s.substr(pos1, pos2 - pos1));
+
+		pos1 = pos2 + c.size();
+		pos2 = s.find(c, pos1);
+	}
+	if (pos1 != s.length())
+		v.push_back(s.substr(pos1));
+	return v;
+}
+
+
+
+// 获取一个cell的向量，dn是指有多少个方向
+vector<float> getCellData(Mat& mag, Mat& angle, int r, int c, int cellSize, int dn)
+{
+	vector<float> cell(dn, 0);
+	float tangle = 360 / (float)dn;
+
+	for (int k = r; k < r + cellSize; k++)
+	{
+		// 每一行图像的指针
+		const float* magData = mag.ptr<float>(k);
+		const float* angleData = angle.ptr<float>(k);
+		for (int i = c; i < c + cellSize; i++)
+		{
+			// floor 是向上取整
+			// cout << angleData[i] << endl;		
+			// cout << magData[i] << endl;
+			cell[floor(angleData[i] / tangle)] += magData[i];
+		}
+	}
+	return cell;
+}
+
+
+// 获取hog向量
+vector<float> getHogData(Mat& originImg)
+{
+	Mat img;
+	// 进行resize
+	resize(originImg, img, Size(18, 36));
+	// 这里可以考虑归一化，也就是第三个参数可以设置为1/255，使0~255映射成0到1
+	img.convertTo(img, CV_32F, 1);
+	Mat gx, gy;
+	Sobel(img, gx, CV_32F, 1, 0, 1);
+	Sobel(img, gy, CV_32F, 0, 1, 1);
+
+	Mat mag, angle;
+	cartToPolar(gx, gy, mag, angle, 1);
+
+
+	// 对每个cell都进行直方图统计
+	vector<vector<float>> cells;
+	int cellSize = 9;
+	int directionNum = 12;
+	for (int i = 0; i < 4; i++)
+	{
+		cells.push_back(getCellData(mag, angle, i * 9, 0, cellSize, directionNum));
+		cells.push_back(getCellData(mag, angle, 9, i * 9, cellSize, directionNum));
+	}
+
+	// 把3个block都整合成一个vector
+	vector<float> hogData;
+	// 每四个cell做一个block，最后串联起来
+	// 第一层是控制第几个block
+	for (int i = 0; i < 3; i++)
+	{
+		// 存储每个block的vector
+		vector<float> v;
+		float total = 0;
+		// 第二层是控制block中的第几个cell
+		for (int j = i * 2; j < i * 2 + 4; j++)
+		{
+			// 控制每个cell里面的每个float值
+			for (int k = 0; k < cells[j].size(); k++)
+			{
+				// 计算一个block里面的L2模外还需要把四个vector整合在一起
+				total += pow(cells[j][k], 2);
+				v.push_back(cells[j][k]);
+			}
+		}
+		// 根据之前算出来block里面的L2模，对之前push进去的进行归一化
+		for (int e = 0; e < v.size(); e++)
+		{
+			hogData.push_back(v[e] / sqrt(total));
+		}
+	}
+	return hogData;
+}
+
+
 
 
 
@@ -689,6 +827,43 @@ float line2lineAngleCos(Vec4f line1, Vec4f line2)
 }
 
 
+// 计算坐标旋转后的点，这里输入的坐标是标准坐标系，输出的也是标准坐标系
+Point rotate(float theta, float x, float y)
+{
+	return Point(cos(theta)*x - sin(theta)*y, sin(theta)*x + cos(theta)*y);
+}
+
+// 切换到椭圆坐标，这里输入的坐标是图像坐标系，输出的是标准坐标系
+Point origin2el(Point2f& center, float theta, Point& origin)
+{
+	float x = origin.x;
+	float y = -origin.y;
+	return rotate(theta, x-center.x, y+center.y);
+}
+
+// 仅仅是测试旋转坐标
+int testRotate()
+{
+	Mat a(400, 400, CV_8UC1, Scalar(0, 0, 0));
+	Point2f center = Point(100, 200);
+	ellipse(a, center, Size(50, 100), 30, 0, 360, Scalar(225, 225, 225), 1, 8);
+	
+	
+	for (int i = 0;i < 5; i++)
+	{
+		Point x = Point(125 + 25 * i, 200);
+		Point newx = origin2el(center, 30 / (float)180 * pi, x);
+		float eq = pow(newx.x, 2) / pow(50, 2) + pow(newx.y, 2) / pow(100, 2);
+		circle(a, x, 2, Scalar(225, 225, 225), -1);
+		cout << eq << endl;
+		imshow("a", a);
+		waitKey();
+	}
+	
+
+	return 0;
+}
+
 // 合并直线的操作
 
 // 1. 右搜索
@@ -720,12 +895,18 @@ void frontSearch(vector<bool>& isVisited, vector<int>& fronts, vector<int>& goal
 // 检测一张图片的各种参数，main函数
 int main()
 {
+	// 给随机种子
+	srand((unsigned)time(NULL));
 	string images_folder = "D:\\VcProject\\biaopan\\imgs\\";
 	string out_folder = "D:\\VcProject\\biaopan\\imgs\\";
+	string modelPath = "D:\\VcProject\\biaopan\\data\\model.txt";
+	// 加载svm
+	Ptr<cv::ml::SVM> svm = cv::ml::SVM::load(modelPath);
 	vector<string> names;
 
 	//glob(images_folder + "Lo3my4.*", names);
-	names.push_back("D:\\VcProject\\biaopan\\imgs\\004.jpg");
+	string picName = "003.jpg";
+	names.push_back("D:\\VcProject\\biaopan\\imgs\\" + picName);
 	int scaleSize = 8;
 	for (const auto& image_name : names)
 	{
@@ -929,27 +1110,49 @@ int main()
 		// mser检测
 		std::vector<cv::Rect> candidates;
 		candidates = mser(roi_dst);
+		// 存储确认是数字的区域以及他们的中心点
+		vector<int> numberAreas;
+		vector<Point> numberAreaCenters;
+
+		Mat roi_see = roi_dst.clone();
 		// 区域显示
 		for (int i = 0; i < candidates.size(); ++i)
 		{
-			//rectangle(roi_dst, candidates[i], color, 1);
+			rectangle(roi_see, candidates[i], color, 1);
+			// 把符合数字的区域框选出来
+			Mat mser_item = roi_dst(candidates[i]);
+			vector<float> v = getHogData(mser_item);
+			Mat testData(1, 144, CV_32FC1, v.data());
+			int response = svm->predict(testData);
+			// 显示出来
+			if (response >= 0)
+			{
+				rectangle(roi_see, candidates[i], Scalar(255, 255, 255), 2);
+				Point ncenter = Point(candidates[i].x + candidates[i].width/2, candidates[i].y + candidates[i].height / 2);
+				circle(roi_see, ncenter, 2, color, -1);
+				numberAreaCenters.push_back(ncenter);
+			}
 		}
-
+		RotatedRect box = fitEllipse(numberAreaCenters);
+		ellipse(roi_see, box, Scalar(255, 255, 255), 1, CV_AA);
 		//ellipse(roi_dst, Point(cvRound(el_dst._xc), cvRound(el_dst._yc)), Size(cvRound(el_dst._a), cvRound(el_dst._b)), el_dst._rad*180.0 / CV_PI, 0.0, 360.0, color, 2);
 
-
-		imshow("see", roi_dst);
+		imwrite("D:\\VcProject\\biaopan\\data\\temp\\1\\" + picName, roi_see);
+		imshow("see", roi_see);
 		imshow("Yaed", resultImage);
-
+		waitKey(0);
 
 
 
 
 		// 1. 缩圈方法以及快速排出都结合起来，选取最优的椭圆（慢慢放缩得到最多的支持点时的个数最多，有个获取极值的过程，再放缩下去支持点就变少）
 
-		// 2. 上面方法不行就用回以前的 bim+支持点方向分类 然后抽样获取椭圆
 
-		// 3. hough圆检测获取精确中心，lsd获取最长直线（指针线）
+
+
+
+
+		// 2. hough圆检测获取精确中心，lsd获取最长直线（指针线）
 
 		/**
 			中心是(200, 200)，在这个中心以一定半径搜索精准的圆心
@@ -1156,6 +1359,88 @@ int main()
 		Point lastPoint = Point(last_part[2], last_part[3]);
 
 
+		// 3. 上面方法不行就用回以前的 bim+支持点方向分类 然后抽样获取椭圆
+		// 给tLine进行分类（按角度分类），比如按照40度一个扇区，就有9个扇区 
+		int sangle = 40;
+		vector<vector<int>> sangles(360 / sangle);
+		for (int ki = tLines.size() - 1; ki >= 0; --ki)
+		{
+			
+			// 计算夹角的cos值
+			int xd = tLines[ki][2] - ac_center.x;
+			int yd = ac_center.y - tLines[ki][3];
+			// 值域在 0~360之间
+			float vangle = fastAtan2(yd, xd) * 180 / pi;
+		
+			sangles[(int)vangle / sangle].push_back(ki);
+		}
+		int asize = sangles.size();
+		int ranTimes = 100;
+		// 允许椭圆拟合中支持点最大的远离程度
+		int acceptThresh = 0.3;
+		// 存储当前的支持点个数
+		int nowSnum = 0;
+		// 存储最多支持点的那个椭圆的外接矩形
+		RotatedRect bestEl;
+		// 存储最终的支持点
+		vector<int> bestSupportPoints;
+		// 这里设置随机的次数
+		for (int ri=0;ri<ranTimes;ri++)
+		{
+			// 存储要选取的扇区，从5个扇区中取值
+			vector<int> ks(5);
+			// 给定初始的点
+			int kindex = random(asize - 1);
+			ks.push_back(kindex);
+			for (int ki = 0; ki < 4; ki++)
+			{
+				// 产生1~2的随机数，也就是所选取的扇区，后选的扇区比前选的扇区最多隔两个位置，保证有一定的角度
+				ks.push_back((kindex + random(2)) % asize);
+			}
+			// 从每个所选的扇区中随机选取一个点进行椭圆拟合
+			vector<Point> candips;
+			for (int ki = 0; ki < 4; ki++)
+			{
+				// ks[ki]指随机选取到的扇区的序号，sangles[扇区序号]拿到的就是这个扇区里面的所有点的序号，所以这里最终随机产生的就是扇区里面的第几个点
+				vector<int> shanqu = sangles[ks[ki]];
+				int sii = random(shanqu.size() - 1);
+				Vec4f vvvv = tLines[shanqu[sii]];
+				Point ssss = Point(vvvv[2], vvvv[3]);
+				candips.push_back(ssss);
+			}
+			// 拟合椭圆后计算支持点个数
+			RotatedRect rect = fitEllipse(candips);
+			// 存储支持点
+			vector<int> support_points;
+			for (int ki=0;ki<tLines.size();ki++)
+			{
+				Point sp = Point(tLines[ki][2], tLines[ki][3]);
+				Point newsp = origin2el(rect.center, rect.angle / (float)180 * pi, sp);
+				float edistance = abs(sqrt(pow(newsp.x, 2) / pow(rect.size.width, 2) + pow(newsp.y, 2) / pow(rect.size.height, 2)) - 1);
+				if (edistance <= acceptThresh)
+					support_points.push_back(ki);
+			}
+			if (support_points.size() >= nowSnum)
+			{
+				nowSnum = support_points.size();
+				bestSupportPoints = support_points;
+				bestEl = rect;
+			}
+				
+		}
+		// 经过上面的循环就能得出支持点最多的那个外接椭圆，下面显示出来
+		Mat forellipse = roi_dst.clone();
+		ellipse(forellipse, bestEl, Scalar(255, 255, 255));
+		for (int ki=0;ki< bestSupportPoints.size();ki++)
+		{
+			circle(forellipse, Point(tLines[ki][2], tLines[ki][3]), 1, Scalar(0, 0, 0), -1);
+		}
+		imshow("forellipse", forellipse);
+		waitKey(0);
+		waitKey(0);
+
+
+
 
 		// 4. svm获取所有的数字区域（这里数据需要增强，比如镜像，颠倒），然后他们中心拟合出椭圆
 		
@@ -1168,138 +1453,6 @@ int main()
 
 
 
-
-
-string int2str(const int &int_temp)
-{
-	stringstream stream;
-	stream << int_temp;
-	return stream.str();   //此处也可以用 stream>>string_temp  
-}
-
-int str2int(const string &string_temp)
-{
-	stringstream ss;
-	ss << string_temp;
-	int i;
-	ss >> i;
-	return i;
-}
-
-vector<string> readTxt(string file)
-{
-	ifstream infile;
-	infile.open(file.data());   //将文件流对象与文件连接起来 
-	assert(infile.is_open());   //若失败,则输出错误消息,并终止程序运行 
-
-	vector<string> names;
-	string s;
-	while (getline(infile, s))
-	{
-		names.push_back(s);
-	}
-	infile.close();             //关闭文件输入流 
-	return names;
-}
-
-// 分割字符串
-vector<string> splitString(const std::string& s, const std::string& c)
-{
-	std::vector<std::string> v;
-	std::string::size_type pos1, pos2;
-	pos2 = s.find(c);
-	pos1 = 0;
-	while (std::string::npos != pos2)
-	{
-		v.push_back(s.substr(pos1, pos2 - pos1));
-
-		pos1 = pos2 + c.size();
-		pos2 = s.find(c, pos1);
-	}
-	if (pos1 != s.length())
-		v.push_back(s.substr(pos1));
-	return v;
-}
-
-
-
-// 获取一个cell的向量，dn是指有多少个方向
-vector<float> getCellData(Mat& mag, Mat& angle, int r, int c, int cellSize, int dn)
-{
-	vector<float> cell(dn, 0);
-	float tangle = 360 / (float)dn;
-
-	for (int k = r; k < r + cellSize; k++)
-	{
-		// 每一行图像的指针
-		const float* magData = mag.ptr<float>(k);
-		const float* angleData = angle.ptr<float>(k);
-		for (int i = c; i < c + cellSize; i++)
-		{
-			// floor 是向上取整
-			// cout << angleData[i] << endl;		
-			// cout << magData[i] << endl;
-			cell[floor(angleData[i] / tangle)] += magData[i];
-		}
-	}
-	return cell;
-}
-
-
-// 获取hog向量
-vector<float> getHogData(Mat& originImg)
-{
-	Mat img;
-	// 进行resize
-	resize(originImg, img,Size(18, 36));
-	// 这里可以考虑归一化，也就是第三个参数可以设置为1/255，使0~255映射成0到1
-	img.convertTo(img, CV_32F, 1);
-	Mat gx, gy;
-	Sobel(img, gx, CV_32F, 1, 0, 1);
-	Sobel(img, gy, CV_32F, 0, 1, 1);
-
-	Mat mag, angle;
-	cartToPolar(gx, gy, mag, angle, 1);
-	
-
-	// 对每个cell都进行直方图统计
-	vector<vector<float>> cells;
-	int cellSize = 9;
-	int directionNum = 12;
-	for (int i=0;i<4;i++)
-	{
-		cells.push_back(getCellData(mag, angle, i * 9, 0, cellSize, directionNum));
-		cells.push_back(getCellData(mag, angle, 9, i * 9, cellSize, directionNum));
-	}
-
-	// 把3个block都整合成一个vector
-	vector<float> hogData;
-	// 每四个cell做一个block，最后串联起来
-	// 第一层是控制第几个block
-	for (int i=0;i<3;i++)
-	{
-		// 存储每个block的vector
-		vector<float> v;
-		float total = 0;
-		// 第二层是控制block中的第几个cell
-		for (int j=i*2;j<i*2+4;j++)
-		{
-			// 控制每个cell里面的每个float值
-			for (int k=0;k<cells[j].size();k++)
-			{
-				// 计算一个block里面的L2模外还需要把四个vector整合在一起
-				total += pow(cells[j][k], 2);
-				v.push_back(cells[j][k]);
-			}
-		}
-		// 根据之前算出来block里面的L2模，对之前push进去的进行归一化
-		for (int e=0;e<v.size();e++) 
-		{
-			hogData.push_back(v[e] / sqrt(total));
-		}
-	}
-	return hogData;
-}
 
 
 
@@ -1323,12 +1476,16 @@ int train()
 		string src = raw[0];
 		int label = str2int(raw[1]);
 		Mat mat = imread(src, IMREAD_GRAYSCALE);
-		// 存储一个hog向量
-		// vector<float> descriptors;//HOG描述子向量
-		// descriptors = getHogData(mat);
-		// descriptors;
 		trainingData.push_back(getHogData(mat));
 		labels.push_back(label);
+		// 这里做数据增强，比如镜像，翻转（原因是可能会出现这些情况）
+		for (int flipCode=-1; flipCode <2; flipCode++)
+		{
+			Mat flipMat;
+			flip(mat, flipMat, flipCode);
+			trainingData.push_back(getHogData(mat));
+			labels.push_back(label);
+		}
 	}
 
 	//设置支持向量机的参数（Set up SVM's parameters）
@@ -1338,7 +1495,7 @@ int train()
 	svm->setType(cv::ml::SVM::C_SVC);
 	svm->setKernel(cv::ml::SVM::LINEAR);
 	// svm->setTermCriteria(TermCriteria(TermCriteria::MAX_ITER, 100, 1e-6));
-	svm->setTermCriteria(cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 1000, FLT_EPSILON));
+	svm->setTermCriteria(cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 1200, FLT_EPSILON));
 	// svm->setTermCriteria(cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 200, 1e-6));
 	// svm->setDegree(1.0);
 	svm->setC(2.67);
