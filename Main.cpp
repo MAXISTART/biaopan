@@ -842,7 +842,7 @@ Point origin2el(Point2f& center, float theta, Point& origin)
 }
 
 // 仅仅是测试旋转坐标
-int testRotate()
+int testRoute()
 {
 	Mat a(400, 400, CV_8UC1, Scalar(0, 0, 0));
 	Point2f center = Point(100, 200);
@@ -851,7 +851,7 @@ int testRotate()
 	
 	for (int i = 0;i < 5; i++)
 	{
-		Point x = Point(125 + 25 * i, 200);
+		Point x = Point(120, 200);
 		Point newx = origin2el(center, 30 / (float)180 * pi, x);
 		float eq = pow(newx.x, 2) / pow(50, 2) + pow(newx.y, 2) / pow(100, 2);
 		circle(a, x, 2, Scalar(225, 225, 225), -1);
@@ -863,6 +863,20 @@ int testRotate()
 
 	return 0;
 }
+
+
+
+// 计算出一个向量与椭圆的, a是椭圆的第一个轴长，b是椭圆的第二个轴长，theta是椭圆的倾斜角，p1 和 p2代表与椭圆相交的直线，最终返回的是 与p1p2向量同方向的交点(p1是出发点)
+Point anchor_on_el_line(float a, float b, float theta, Point& p1, Point& p2)
+{
+	// 先转为标准坐标系
+
+
+	return;
+}
+
+
+
 
 // 合并直线的操作
 
@@ -905,7 +919,7 @@ int main()
 	vector<string> names;
 
 	//glob(images_folder + "Lo3my4.*", names);
-	string picName = "003.jpg";
+	string picName = "006.jpg";
 	names.push_back("D:\\VcProject\\biaopan\\imgs\\" + picName);
 	int scaleSize = 8;
 	for (const auto& image_name : names)
@@ -1115,6 +1129,7 @@ int main()
 		vector<Point> numberAreaCenters;
 
 		Mat roi_see = roi_dst.clone();
+		Mat roi_foresee = roi_dst.clone();
 		// 区域显示
 		for (int i = 0; i < candidates.size(); ++i)
 		{
@@ -1128,27 +1143,22 @@ int main()
 			if (response >= 0)
 			{
 				rectangle(roi_see, candidates[i], Scalar(255, 255, 255), 2);
-				Point ncenter = Point(candidates[i].x + candidates[i].width/2, candidates[i].y + candidates[i].height / 2);
+				Point ncenter = Point(candidates[i].x + candidates[i].width / 2, candidates[i].y + candidates[i].height / 2);
 				circle(roi_see, ncenter, 2, color, -1);
 				numberAreaCenters.push_back(ncenter);
+				cout << "标签为： " << response << endl;
+				imshow("see", roi_see);
+				waitKey(0);
 			}
 		}
 		RotatedRect box = fitEllipse(numberAreaCenters);
 		ellipse(roi_see, box, Scalar(255, 255, 255), 1, CV_AA);
-		//ellipse(roi_dst, Point(cvRound(el_dst._xc), cvRound(el_dst._yc)), Size(cvRound(el_dst._a), cvRound(el_dst._b)), el_dst._rad*180.0 / CV_PI, 0.0, 360.0, color, 2);
+		ellipse(roi_see, Point(cvRound(el_dst._xc), cvRound(el_dst._yc)), Size(cvRound(el_dst._a), cvRound(el_dst._b)), el_dst._rad*180.0 / CV_PI, 0.0, 360.0, color, 2);
 
 		imwrite("D:\\VcProject\\biaopan\\data\\temp\\1\\" + picName, roi_see);
 		imshow("see", roi_see);
 		imshow("Yaed", resultImage);
 		waitKey(0);
-
-
-
-
-		// 1. 缩圈方法以及快速排出都结合起来，选取最优的椭圆（慢慢放缩得到最多的支持点时的个数最多，有个获取极值的过程，再放缩下去支持点就变少）
-
-
-
 
 
 
@@ -1324,7 +1334,7 @@ int main()
 			}
 
 			imshow("see", roi_dst);
-			waitKey();
+			// waitKey();
 		}
 		
 
@@ -1370,14 +1380,13 @@ int main()
 			int xd = tLines[ki][2] - ac_center.x;
 			int yd = ac_center.y - tLines[ki][3];
 			// 值域在 0~360之间
-			float vangle = fastAtan2(yd, xd) * 180 / pi;
-		
+			float vangle = fastAtan2(yd, xd);
 			sangles[(int)vangle / sangle].push_back(ki);
 		}
 		int asize = sangles.size();
-		int ranTimes = 100;
+		int ranTimes = 1000;
 		// 允许椭圆拟合中支持点最大的远离程度
-		int acceptThresh = 0.3;
+		float acceptThresh = 8;
 		// 存储当前的支持点个数
 		int nowSnum = 0;
 		// 存储最多支持点的那个椭圆的外接矩形
@@ -1388,18 +1397,19 @@ int main()
 		for (int ri=0;ri<ranTimes;ri++)
 		{
 			// 存储要选取的扇区，从5个扇区中取值
-			vector<int> ks(5);
+			vector<int> ks;
 			// 给定初始的点
 			int kindex = random(asize - 1);
 			ks.push_back(kindex);
 			for (int ki = 0; ki < 4; ki++)
 			{
 				// 产生1~2的随机数，也就是所选取的扇区，后选的扇区比前选的扇区最多隔两个位置，保证有一定的角度
-				ks.push_back((kindex + random(2)) % asize);
+				kindex = (kindex + random(2)) % asize;
+				ks.push_back(kindex);
 			}
 			// 从每个所选的扇区中随机选取一个点进行椭圆拟合
 			vector<Point> candips;
-			for (int ki = 0; ki < 4; ki++)
+			for (int ki = 0; ki < 5; ki++)
 			{
 				// ks[ki]指随机选取到的扇区的序号，sangles[扇区序号]拿到的就是这个扇区里面的所有点的序号，所以这里最终随机产生的就是扇区里面的第几个点
 				vector<int> shanqu = sangles[ks[ki]];
@@ -1410,16 +1420,44 @@ int main()
 			}
 			// 拟合椭圆后计算支持点个数
 			RotatedRect rect = fitEllipse(candips);
+
+			//Mat forellipse = roi_foresee.clone();
+			//ellipse(forellipse, rect, Scalar(255, 255, 255));
+			//imshow("forellipse", forellipse);
+			//int aaaa = waitKey(0);
+			//if (aaaa == 100) { continue; }
+
 			// 存储支持点
 			vector<int> support_points;
 			for (int ki=0;ki<tLines.size();ki++)
 			{
 				Point sp = Point(tLines[ki][2], tLines[ki][3]);
 				Point newsp = origin2el(rect.center, rect.angle / (float)180 * pi, sp);
-				float edistance = abs(sqrt(pow(newsp.x, 2) / pow(rect.size.width, 2) + pow(newsp.y, 2) / pow(rect.size.height, 2)) - 1);
+				//circle(forellipse, Point(tLines[ki][2], tLines[ki][3]), 3, Scalar(0, 0, 0), -1);
+				// 这里还需要考虑上拟合圆的大小
+				float edistance = abs(sqrt(pow(newsp.x, 2) / pow(rect.size.width/2, 2) + pow(newsp.y, 2) / pow(rect.size.height/2, 2)) - 1) * max(rect.size.width / 2, rect.size.height / 2);
+				//cout << "edistance： " << edistance << endl;
 				if (edistance <= acceptThresh)
+				{
 					support_points.push_back(ki);
+				}
+				//cout << "support_points： " << support_points.size() << endl;
+				//cout << "当前点数： " << ki << endl;
+				//imshow("forellipse", forellipse);
+				//waitKey(0);
 			}
+
+			//cout << "支持点为： " << endl;
+			//waitKey(0);
+			//forellipse = roi_foresee.clone();
+			//for (int ki = 0; ki < support_points.size(); ki++)
+			//{
+			//	int tLineIndex = support_points[ki];
+			//	circle(forellipse, Point(tLines[tLineIndex][2], tLines[tLineIndex][3]), 3, Scalar(0, 0, 0), -1);
+			//}
+			//imshow("forellipse", forellipse);
+			//waitKey(0);
+
 			if (support_points.size() >= nowSnum)
 			{
 				nowSnum = support_points.size();
@@ -1429,12 +1467,22 @@ int main()
 				
 		}
 		// 经过上面的循环就能得出支持点最多的那个外接椭圆，下面显示出来
-		Mat forellipse = roi_dst.clone();
-		ellipse(forellipse, bestEl, Scalar(255, 255, 255));
-		for (int ki=0;ki< bestSupportPoints.size();ki++)
+		Mat forellipse = roi_foresee.clone();
+		// 对拿到的支持点继续进行拟合
+		vector<Point> supporters;
+		for (int ki = 0; ki < bestSupportPoints.size(); ki++)
 		{
-			circle(forellipse, Point(tLines[ki][2], tLines[ki][3]), 1, Scalar(0, 0, 0), -1);
+			int tLineIndex = bestSupportPoints[ki];
+			Point supporter = Point(tLines[tLineIndex][2], tLines[tLineIndex][3]);
+			supporters.push_back(supporter);
+			circle(forellipse, supporter, 3, Scalar(0, 0, 0), -1);
 		}
+		bestEl = fitEllipse(supporters);
+		// 一般的出来的椭圆不能是太扁，也就是长轴比短轴是有个限制的，所以需要把上面的椭圆方法单独抽出成为一个方法，
+		// 实现递归调用，而且每次传送一个计数器，计数器表示第几次递归，不能递归太多次导致无限循环
+		// 有条件的话还可以拿一开始拿到的椭圆进行 比例比对，如果比例失衡打到一定限度，那就是弄错了，需要递归一次，如果最终递归还是错误，那么椭圆就是一开始拿到的椭圆(就是检测表盘区域的椭圆)
+		ellipse(forellipse, bestEl, Scalar(255, 255, 255));
+
 		imshow("forellipse", forellipse);
 		waitKey(0);
 		waitKey(0);
@@ -1442,7 +1490,14 @@ int main()
 
 
 
-		// 4. svm获取所有的数字区域（这里数据需要增强，比如镜像，颠倒），然后他们中心拟合出椭圆
+		// 4. 数值读取
+		// 先找出变换点，也就是能作为透视变换的点，然后是变换
+		
+
+
+
+
+
 		
 		waitKey();	
 	}
