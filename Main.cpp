@@ -833,13 +833,24 @@ Point rotate(float theta, float x, float y)
 	return Point(cos(theta)*x - sin(theta)*y, sin(theta)*x + cos(theta)*y);
 }
 
-// 切换到椭圆坐标，这里输入的坐标是图像坐标系，输出的是标准坐标系
+// 切换到椭圆坐标，这里输入的坐标是图像坐标系，输出的是标准坐标系（先平移后旋转）
 Point origin2el(Point2f& center, float theta, Point& origin)
 {
 	float x = origin.x;
 	float y = -origin.y;
 	return rotate(theta, x-center.x, y+center.y);
 }
+
+
+// 切换到图像坐标，这里输入的坐标是标准坐标系，输出的是图像坐标系（先旋转后平移）
+Point el2origin(Point2f& center, float theta, Point& el)
+{
+	Point origin = rotate(theta, el.x, el.y);
+	float x = origin.x;
+	float y = -origin.y;
+	return Point(x + center.x, y + center.y);
+}
+
 
 // 仅仅是测试旋转坐标
 int testRoute()
@@ -866,15 +877,82 @@ int testRoute()
 
 
 
-// 计算出一个向量与椭圆的, a是椭圆的第一个轴长，b是椭圆的第二个轴长，theta是椭圆的倾斜角，p1 和 p2代表与椭圆相交的直线，最终返回的是 与p1p2向量同方向的交点(p1是出发点)
-Point anchor_on_el_line(float a, float b, float theta, Point& p1, Point& p2)
+// 计算出一个向量与椭圆的, a是椭圆的第一个轴长，b是椭圆的第二个轴长，theta是椭圆的倾斜角，xx1 和 xx2代表与椭圆相交的直线，最终返回的是 与xx1xx2向量同方向的交点(p1是出发点)
+Point anchor_on_el_line(float a, float b, float theta, Point2f& center, Point& xx1, Point& xx2)
 {
-	// 先转为标准坐标系
+
+	Point newx1 = origin2el(center, theta, xx1);
+	Point newx2 = origin2el(center, theta, xx2);
+	float k = (newx1.y - newx2.y) / (float)(newx1.x - newx2.x);
+	float c = newx2.y - k * newx2.x;
+	float A = pow(b, 2) + pow(a, 2) * pow(k, 2);
+	float B = 2 * k * c * pow(a, 2);
+	float C = pow(a, 2) * pow(c, 2) - pow(a, 2) * pow(b, 2);
+
+	float delta = pow(B, 2) - 4 * A * C;
+	// if (abs(delta) <= 0.01) { delta = 0; }
+	Point origin;
+	Point el;
+	if (delta == 0)
+	{
+		float x = -B / 2 / A;		
+		float y = k * x + c;
+		el = Point(x, y);
+		// 最后要转为图像坐标输出
+		origin = el2origin(center, -theta, el);
+	}
+	if (delta > 0)
+	{
+
+		float x1 = (-B + sqrt(delta)) / 2 / A;
+		float x2 = (-B - sqrt(delta)) / 2 / A;
+		float y1 = (k * x1 + c);
+		float y2 = (k * x2 + c);
+
+		// p1p2向量，下面判断是否同方向
+		Vec2f v0 = Vec2f(newx2.x - newx1.x, newx2.y - newx1.y);
+		Vec2f v1 = Vec2f(x1 - newx1.x, y1 - newx1.y);
+		Vec2f v2 = Vec2f(x2 - newx1.x, y2 - newx1.y);
+		float d1 = abs((v0[0] * v1[0] + v0[1] * v1[1]) / sqrt(pow(v0[0], 2) + pow(v0[1], 2)) / sqrt(pow(v1[0], 2) + pow(v1[1], 2)) - 1);
+		float d2 = abs((v0[0] * v2[0] + v0[1] * v2[1]) / sqrt(pow(v0[0], 2) + pow(v0[1], 2)) / sqrt(pow(v2[0], 2) + pow(v2[1], 2)) - 1);
+		if (d1 <= d2)
+		{
+			el = Point(x1, y1);
+			// 最后要转为图像坐标输出
+			origin = el2origin(center, -theta, el);
+		}
+		else
+		{
+			el = Point(x2, y2);
+			// 最后要转为图像坐标输出
+			origin = el2origin(center, -theta, el);
+		}
 
 
-	return;
+	}
+	return origin;
 }
 
+
+
+
+// 测试椭圆交线
+int test_anchor_on_el_line()
+{
+	Mat a(400, 400, CV_8UC3, Scalar(0, 0, 0));
+	Point x = Point(200, 300);
+	Point2f center = Point2f(100, 200);
+	Point center_ = Point(100, 200);
+	ellipse(a, center, Size(50, 100), 75, 0, 360, Scalar(225, 225, 225), 1, 8);
+
+	Point xxxx = anchor_on_el_line(50, 100, 75 / (float)180 * pi, center, center_, x);
+	circle(a, center, 2, Scalar(0, 225, 225), -1);
+	circle(a, x, 2, Scalar(0, 225, 225), -1);
+	circle(a, xxxx, 2, Scalar(255, 0, 0), -1);
+	imshow("a", a);
+	waitKey(0);
+	return 0;
+}
 
 
 
@@ -919,7 +997,7 @@ int main()
 	vector<string> names;
 
 	//glob(images_folder + "Lo3my4.*", names);
-	string picName = "006.jpg";
+	string picName = "002.jpg";
 	names.push_back("D:\\VcProject\\biaopan\\imgs\\" + picName);
 	int scaleSize = 8;
 	for (const auto& image_name : names)
@@ -1124,9 +1202,10 @@ int main()
 		// mser检测
 		std::vector<cv::Rect> candidates;
 		candidates = mser(roi_dst);
-		// 存储确认是数字的区域以及他们的中心点
-		vector<int> numberAreas;
+		// 存储确认是数字的区域以及他们的中心点还有他们的响应
+		vector<Rect> numberAreas;
 		vector<Point> numberAreaCenters;
+		vector<int> numberAreaRes;
 
 		Mat roi_see = roi_dst.clone();
 		Mat roi_foresee = roi_dst.clone();
@@ -1146,6 +1225,8 @@ int main()
 				Point ncenter = Point(candidates[i].x + candidates[i].width / 2, candidates[i].y + candidates[i].height / 2);
 				circle(roi_see, ncenter, 2, color, -1);
 				numberAreaCenters.push_back(ncenter);
+				numberAreas.push_back(candidates[i]);
+				numberAreaRes.push_back(response);
 				cout << "标签为： " << response << endl;
 				imshow("see", roi_see);
 				waitKey(0);
@@ -1492,15 +1573,74 @@ int main()
 
 		// 4. 数值读取
 		// 先找出变换点，也就是能作为透视变换的点，然后是变换
+		// 从有数字的里面搜寻成对存在的
+		// 存储这些合并后的区域以及他们的响应值
+		struct MergeArea
+		{
+			// 两个index存储在candidate中的序号
+			int aIndex;
+			int bIndex;
+			// 存储总共的响应值
+			float response;
+			// 存储他们的中心
+			Point& center;
+		};
+		vector<MergeArea> mms;
 		
+		for (int kii=0;kii<numberAreaRes.size();kii++) 
+		{
+			int response = numberAreaRes[kii];
+			// 搜索大于0的点
+			if (response == 0) { continue; }
+			Point numcenter = numberAreaCenters[kii];
+			Point newNumCenter;
+			// 这个距离不能太长
+			float min_distance = 30;
+			// 存储与该点距离最短的有效点，如果没有的就用-1当他的伙伴
+			int cc = -1;
+			Mat forellipse_1 = roi_foresee.clone();
+			rectangle(forellipse_1, numberAreas[kii], Scalar(255, 255, 255), 2);
+			// cout << "mm.kjj: " << response << endl;
+			imshow("forellipse_1", forellipse_1);
+			waitKey(0);
+			for (int kjj = 0; kjj < numberAreaRes.size(); kjj++)
+			{
+				if (numberAreaRes[kjj] > 0) { continue; }
+				float kjj_distance = point2point(numcenter, numberAreaCenters[kjj]);
+				// 离他最近的作为他的伙伴
+				// cout << "mm.kjj_distance: " << kjj_distance << endl;
+				// cout << "mm.min_distance: " << min_distance << endl;
+				// cout << "mm.kjj: " << numberAreaRes[kjj] << endl;
+				if (kjj_distance < min_distance )
+				{
+					min_distance = kjj_distance;
+					cc = kjj;
+				}
+				rectangle(forellipse_1, numberAreas[kjj], Scalar(255, 255, 255), 2);
+				imshow("forellipse_1", forellipse_1);
+				waitKey(0);
 
-
-
-
-
-		
+			}
+			Point mm_center;
+			if (cc >= 0)
+			{
+				mm_center = Point((numcenter.x + numberAreaCenters[cc].x) / 2, (numcenter.y + numberAreaCenters[cc].y) / 2);
+			}
+			else if (cc < 0)
+			{
+				mm_center = numcenter;
+			}
+			MergeArea mm = MergeArea{ kii, cc, response / (float)10, mm_center };
+			cout << "==========================" << endl;
+			cout << "mm.response: " << mm.response << endl;
+			mms.push_back(mm);
+		}	
 		waitKey();	
 	}
+
+
+	// 得出变换点
+
 
 	int yghds = 0;
 	return 0;
