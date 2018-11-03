@@ -15,51 +15,51 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(241): warning C4244: “参数�
 d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(258): warning C4018: “<”: 有符号/无符号不匹配
 d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(261): warning C4018: “<”: 有符号/无符号不匹配
 d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(451): warning C4305: “初始化”: 从“double”到“float”截断
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(717): warning C4244: “参数”: 从“float”转换到“const unsigned __int64”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(812): warning C4244: “return”: 从“double”转换到“float”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(833): warning C4244: “参数”: 从“float”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(723): warning C4244: “参数”: 从“float”转换到“const unsigned __int64”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(818): warning C4244: “return”: 从“double”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(839): warning C4244: “参数”: 从“float”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(839): warning C4244: “初始化”: 从“_Tp”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(845): warning C4244: “初始化”: 从“_Tp”转换到“float”，可能丢失数据
           with
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(840): warning C4244: “初始化”: 从“_Tp”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(846): warning C4244: “初始化”: 从“_Tp”转换到“float”，可能丢失数据
           with
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(848): warning C4244: “参数”: 从“_Tp”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(854): warning C4244: “参数”: 从“_Tp”转换到“float”，可能丢失数据
           with
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(849): warning C4244: “初始化”: 从“_Tp”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(855): warning C4244: “初始化”: 从“_Tp”转换到“float”，可能丢失数据
           with
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(850): warning C4244: “初始化”: 从“_Tp”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(856): warning C4244: “初始化”: 从“_Tp”转换到“float”，可能丢失数据
           with
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(851): warning C4244: “参数”: 从“float”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(857): warning C4244: “参数”: 从“float”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(866): warning C4305: “参数”: 从“double”到“float”截断
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(867): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(900): warning C4244: “参数”: 从“float”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(872): warning C4305: “参数”: 从“double”到“float”截断
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(873): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(906): warning C4244: “参数”: 从“float”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(913): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(919): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=int
@@ -67,20 +67,20 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(913): warning C4244: “参数�
           and
           [
               _Tp=float
-          ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(920): warning C4244: “参数”: 从“float”转换到“_Tp”，可能丢失数据
-          with
-          [
-              _Tp=int
           ]
 d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(926): warning C4244: “参数”: 从“float”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(948): warning C4305: “参数”: 从“double”到“float”截断
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1085): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1163): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(932): warning C4244: “参数”: 从“float”转换到“_Tp”，可能丢失数据
+          with
+          [
+              _Tp=int
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(954): warning C4305: “参数”: 从“double”到“float”截断
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1197): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1290): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=float
@@ -89,9 +89,9 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1163): warning C4244: “参数�
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1220): warning C4244: “初始化”: 从“float”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1261): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1263): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1308): warning C4267: “=”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1395): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1397): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=float
@@ -100,30 +100,16 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1263): warning C4244: “参数�
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1270): warning C4244: “参数”: 从“_Tp”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1410): warning C4244: “参数”: 从“_Tp”转换到“int”，可能丢失数据
           with
           [
               _Tp=float
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1284): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1292): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1298): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1304): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1311): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
-          with
-          [
-              _Tp=float
-          ]
-          and
-          [
-              _Tp=int
-          ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1357): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1362): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1376): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1392): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1405): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1412): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1424): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1432): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1438): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1444): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1451): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=float
@@ -132,7 +118,12 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1412): warning C4244: “参数�
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1413): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1497): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1502): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1518): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1534): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1547): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1554): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=float
@@ -141,8 +132,7 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1413): warning C4244: “参数�
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1424): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1441): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1555): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=float
@@ -151,7 +141,8 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1441): warning C4244: “参数�
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1442): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1566): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1584): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=float
@@ -160,7 +151,7 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1442): warning C4244: “参数�
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1450): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1585): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=float
@@ -169,20 +160,7 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1450): warning C4244: “参数�
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1457): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1461): warning C4244: “初始化”: 从“_Tp”转换到“int”，可能丢失数据
-          with
-          [
-              _Tp=float
-          ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1462): warning C4244: “初始化”: 从“_Tp”转换到“int”，可能丢失数据
-          with
-          [
-              _Tp=float
-          ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1464): warning C4244: “参数”: 从“int”转换到“float”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1467): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1499): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1593): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=float
@@ -191,7 +169,20 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1499): warning C4244: “参数�
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1515): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1600): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1604): warning C4244: “初始化”: 从“_Tp”转换到“int”，可能丢失数据
+          with
+          [
+              _Tp=float
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1605): warning C4244: “初始化”: 从“_Tp”转换到“int”，可能丢失数据
+          with
+          [
+              _Tp=float
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1607): warning C4244: “参数”: 从“int”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1622): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1654): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=float
@@ -200,10 +191,7 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1515): warning C4244: “参数�
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1516): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1519): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1544): warning C4267: “=”: 从“size_t”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1557): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1670): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
           with
           [
               _Tp=float
@@ -212,8 +200,100 @@ d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1557): warning C4244: “参数�
           [
               _Tp=int
           ]
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1734): warning C4244: “初始化”: 从“float”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1750): warning C4244: “初始化”: 从“float”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1785): warning C4244: “初始化”: 从“float”转换到“int”，可能丢失数据
-d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1894): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1671): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1674): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1699): warning C4267: “=”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1712): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+          with
+          [
+              _Tp=float
+          ]
+          and
+          [
+              _Tp=int
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1747): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1748): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1757): warning C4244: “初始化”: 从“float”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1860): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+          with
+          [
+              _Tp=float
+          ]
+          and
+          [
+              _Tp=int
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1861): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1893): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+          with
+          [
+              _Tp=int
+          ]
+          and
+          [
+              _Tp=float
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1902): warning C4244: “=”: 从“int”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(1907): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2033): warning C4244: “初始化”: 从“float”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2049): warning C4244: “初始化”: 从“float”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2084): warning C4244: “初始化”: 从“float”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2204): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2289): warning C4267: “=”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2327): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2329): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+          with
+          [
+              _Tp=float
+          ]
+          and
+          [
+              _Tp=int
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2342): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2346): warning C4244: “初始化”: 从“_Tp”转换到“int”，可能丢失数据
+          with
+          [
+              _Tp=float
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2347): warning C4244: “初始化”: 从“_Tp”转换到“int”，可能丢失数据
+          with
+          [
+              _Tp=float
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2349): warning C4244: “参数”: 从“int”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2364): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2396): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+          with
+          [
+              _Tp=float
+          ]
+          and
+          [
+              _Tp=int
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2406): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+          with
+          [
+              _Tp=float
+          ]
+          and
+          [
+              _Tp=int
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2407): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2409): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2420): warning C4267: “=”: 从“size_t”转换到“int”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2433): warning C4244: “参数”: 从“_Tp”转换到“_Tp”，可能丢失数据
+          with
+          [
+              _Tp=float
+          ]
+          and
+          [
+              _Tp=int
+          ]
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2461): warning C4244: “参数”: 从“double”转换到“float”，可能丢失数据
+d:\vcproject\biaopan\demo1\demo1\demo1\main.cpp(2462): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
   demo1.vcxproj -> D:\VcProject\biaopan\demo1\demo1\x64\Debug\demo1.exe

@@ -1903,7 +1903,7 @@ void CEllipseDetectorYaed::DrawDetectedEllipses(Mat3b& output, vector<Ellipse>& 
 	{
 		Ellipse& e = ellipses[n - i - 1];
 		int g = cvRound(e._score * 255.f);
-		Scalar color(0, g, 0);
+		Scalar color(255, 255, 255);
 		ellipse(output, Point(cvRound(e._xc), cvRound(e._yc)), Size(cvRound(e._a), cvRound(e._b)), e._rad*180.0 / CV_PI, 0.0, 360.0, color, thickness);
 	}
 }
