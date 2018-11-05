@@ -611,7 +611,7 @@ std::vector<cv::Rect> mser(cv::Mat srcImage)
 	std::vector<std::vector<cv::Point> > regContours;
 	
 	// 创建MSER对象
-	cv::Ptr<cv::MSER> mesr1 = cv::MSER::create(2, 10, 500, 0.5, 0.3);
+	cv::Ptr<cv::MSER> mesr1 = cv::MSER::create(2, 5, 800, 0.5, 0.3);
 
 
 	std::vector<cv::Rect> boxes;
@@ -631,11 +631,11 @@ std::vector<cv::Rect> mser(cv::Mat srcImage)
 		convexHull(regContours[i], hull);
 		Rect br = boundingRect(hull);
 		// 宽高比例
-		double wh_ratio = br.width / double(br.height);
+		double wh_ratio = br.height / double(br.width);
 		// 面积
 		int b_size = br.width * br.height;
 		// 不符合尺寸条件判断
-		if (b_size < 500 && b_size > 50)
+		if (b_size < 800 && b_size > 50)
 		{
 			br = Rect(br.x - 3, br.y - 3, br.width + 6, br.height + 6);
 			keeps.push_back(br);
@@ -1073,7 +1073,7 @@ int randomTest()
 
 // 检测一张图片的各种参数，main函数
 
-int zhujhanshu ()
+int zhufangfa ()
 {
 	// 给随机种子
 	srand((unsigned)time(NULL));
@@ -1086,16 +1086,19 @@ int zhujhanshu ()
 
 	//glob(images_folder + "Lo3my4.*", names);
 	// 1 85是重要因素
-	string picName = "16 28.jpg";
+	string picName = "16 12.jpg";
 	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
 	//names.push_back("D:\\VcProject\\biaopan\\imgs\\002.jpg");
-	int scaleSize = 8;
+	int scaleSize = 2;
 	for (const auto& image_name : names)
 	{
 		//string name = image_name.substr(image_name.find_last_of("\\") + 1);
 		//name = name.substr(0, name.find_last_of("."));
 
 		Mat3b image_1 = imread(image_name);
+		// 对图片进行压缩
+		resize(image_1, image_1, Size(image_1.size[1] / 2.5, image_1.size[0] / 2.5));
+		
 		// 有些图片需要翻转
 		// flip(image_1, image_1, -1);
 		Mat3b image;
@@ -1144,19 +1147,24 @@ int zhujhanshu ()
 		// Detect
 		vector<Ellipse> ellsYaed;
 		Mat1b gray_clone = gray.clone();
-
+		Mat1b gray_clone_add = gray.clone();
 
 		imshow("gray_clone", gray_clone);
 		waitKey();
-		Mat1b gray_clone_add = gray_clone.clone();
-		threshold(gray_clone, gray_clone, 0, 255, CV_THRESH_OTSU);
-		adaptiveThreshold(gray_clone_add, gray_clone_add, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 9, 0);
-		imshow("gray_clone", gray_clone_add - gray_clone);
-		waitKey();
+		
+
+
+		//Mat kernel = (Mat_<float>(3, 3) << 0, -1, 0, 0, 5, 0, 0, -1, 0);
+		//filter2D(gray_clone, gray_clone_add, CV_8UC3, kernel);
+		//imshow("gray_clone", gray_clone_add);
+		//waitKey();
+
+		Mat1b gray_edge;
+		Canny(gray_clone, gray_edge, 3, 9, 3);
+		imshow("gray_clone", gray_edge);
 		waitKey();
 
-		gray_clone = gray_clone_add - gray_clone;
-		yaed.Detect(gray_clone, ellsYaed);
+		yaed.Detect(gray_edge, ellsYaed);
 		
 
 
@@ -1180,6 +1188,15 @@ int zhujhanshu ()
 		yaed.DrawDetectedEllipses(resultImage, ellsYaed);
 		cout << "detect ells number : " << ellsYaed.size() << endl;
 
+
+		// 如果上面的canny算子获取不到椭圆就用下面的方法获取
+		if (ellsYaed.size() <= 1)
+		{	
+			adaptiveThreshold(gray_clone_add, gray_clone_add, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 9, 0);
+			imshow("gray_clone", gray_clone_add);
+			waitKey();
+			yaed.Detect(gray_clone_add, ellsYaed);
+		}
 
 		if (ellsYaed.size() == 0)
 		{
@@ -1246,6 +1263,8 @@ int zhujhanshu ()
 			// 运行LSD算法检测直线
 			// 实验发现用自动阈值比canny更好得到刻度线，这里的 9=3*3模板，25=5*5模板，这里也发现 ADAPTIVE_THRESH_MEAN_C 比 ADAPTIVE_THRESH_GAUSSIAN_C的更容易检测到直线
 			//adaptiveThreshold(roi_2, roi_2, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 9, 0);
+
+
 			adaptiveThreshold(roi_2_add, roi_2_add, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 25, 0);
 			threshold(roi_2, roi_2, 0, 255, CV_THRESH_OTSU);
 			imshow("thresh_result_1", roi_2);
@@ -1253,7 +1272,10 @@ int zhujhanshu ()
 			// 但是实际上，对于表盘应用，上面两个相减会得到并集的效果
 			imshow("thresh_result_3", roi_2_add - roi_2);
 			waitKey(0);
-			// Canny(roi_2, roi_2, 50, 150, 3); // Apply canny edge//可选canny算子
+
+
+			// gray_clone, gray_edge, 3, 9, 3
+			// Canny(roi_2, roi_2, 3, 9, 3); // Apply canny edge//可选canny算子
 
 			Ptr<LineSegmentDetector> ls = createLineSegmentDetector(LSD_REFINE_STD);
 			vector<Vec4f> lines_std;
@@ -1311,7 +1333,7 @@ int zhujhanshu ()
 				tLines = lines_dst;
 			}
 
-			imshow("roi", drawnLines);
+			imshow("drawnLines", drawnLines);
 			imshow("Yaed", resultImage);
 			cout << "index : " << index << endl;
 			waitKey();
@@ -1333,13 +1355,22 @@ int zhujhanshu ()
 
 
 
-		// 下面测试用 自动阈值 来mser，经过试验发现，这个方法没有直接mser有效
+		// 下面测试用 自动阈值 来mser，经过试验发现，这个方法切割比直接mser好
 		Mat roi_thresh = roi_dst.clone();
 		Mat roi_thresh_mser = roi_dst.clone();
 		// 实验证明 ADAPTIVE_THRESH_GAUSSIAN_C 比 ADAPTIVE_THRESH_MEAN_C 分割的更好，边缘更加光滑
 		adaptiveThreshold(roi_thresh, roi_thresh, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 25, 0);
 		//erode(roi_thresh, roi_thresh, Mat(2, 2, CV_8U), Point(0, 0), 1);
 		//medianBlur(roi_thresh, roi_thresh, 3);
+
+		//获取自定义核
+		Mat e_element = getStructuringElement(MORPH_ELLIPSE, Size(1, 1)); //第一个参数MORPH_RECT表示矩形的卷积核，当然还可以选择椭圆形的、交叉型的
+		// Mat d_element = getStructuringElement(MORPH_ELLIPSE, Size(2, 2)); //第一个参数MORPH_RECT表示矩形的卷积核，当然还可以选择椭圆形的、交叉型的
+
+		//腐蚀操作
+		erode(roi_thresh, roi_thresh, e_element);
+		//dilate(roi_thresh, roi_thresh, d_element);
+		//erode(roi_thresh, roi_thresh, element);
 		imshow("roi_thresh", roi_thresh);
 		waitKey(0);
 		
@@ -1718,7 +1749,8 @@ int zhujhanshu ()
 		// 实现递归调用，而且每次传送一个计数器，计数器表示第几次递归，不能递归太多次导致无限循环
 		// 有条件的话还可以拿一开始拿到的椭圆进行 比例比对，如果比例失衡打到一定限度，那就是弄错了，需要递归一次，如果最终递归还是错误，那么椭圆就是一开始拿到的椭圆(就是检测表盘区域的椭圆)
 		ellipse(roi_line, bestEl, Scalar(255, 255, 255));
-
+		RotatedRect bestEl_scale = RotatedRect(bestEl.center, Size2f(bestEl.size.width * 0.86, bestEl.size.height * 0.86), bestEl.angle);
+		ellipse(roi_line, bestEl_scale, Scalar(0, 0, 0));
 		imshow("roi_line", roi_line);
 		waitKey(0);
 		waitKey(0);
@@ -1732,7 +1764,9 @@ int zhujhanshu ()
 		std::vector<cv::Rect> candidates;
 		imshow("roi_mser", roi_dst);
 		waitKey(0);
-		candidates = mser(roi_dst);
+		// candidates = mser(roi_dst);
+		// 实验证明，thresh后的mser比直接mser更好
+		candidates = ccs;
 		// 存储确认是数字的区域以及他们的中心点还有他们的响应
 		vector<Rect> numberAreas;
 		vector<Point> numberAreaCenters;
@@ -1745,31 +1779,40 @@ int zhujhanshu ()
 			// 先筛选掉拟合圆外面的点
 			Point ncenter = Point(candidates[i].x + candidates[i].width / 2, candidates[i].y + candidates[i].height / 2);
 			Point newsc = origin2el(bestEl.center, bestEl.angle / (float)180 * pi, ncenter);
-			float ndistance = sqrt(pow(newsc.x, 2) / pow(bestEl.size.width / 2, 2) + pow(newsc.y, 2) / pow(bestEl.size.height / 2, 2)) - 1 ;
-			if (ndistance >= 0) { continue; }
+			float ndistance = sqrt(pow(newsc.x, 2) / pow(bestEl.size.width / 2, 2) + pow(newsc.y, 2) / pow(bestEl.size.height / 2, 2));
+			// 这里的椭圆需要往内部缩一下，去除过多的咋点，比如刻度线
+			if (ndistance >= 0.86) { continue; }
 
 
 			rectangle(roi_mser, candidates[i], color, 1);
 			// 把符合数字的区域框选出来
 			Mat mser_item = roi_dst(candidates[i]);
-			vector<float> v = getHogData(mser_item);
-			Mat testData(1, 144, CV_32FC1, v.data());
-			int response = svm->predict(testData);
-			// 显示出来
-			if (response >= 0)
-			{
-				rectangle(roi_mser, candidates[i], Scalar(255, 255, 255), 2);
-				circle(roi_mser, ncenter, 2, color, -1);
-				numberAreaCenters.push_back(ncenter);
-				numberAreas.push_back(candidates[i]);
-				// 这里需要修改，只是方便测试
-				if (response == 3) { response = 2; }
-				numberAreaRes.push_back(response);
-				cout << "标签为： " << response << endl;
-				imshow("roi_mser", roi_mser);
-				waitKey(0);
-			}
+
+
+			rectangle(roi_mser, candidates[i], Scalar(255, 255, 255), 2);
+
+			//vector<float> v = getHogData(mser_item);
+			//Mat testData(1, 144, CV_32FC1, v.data());
+			//int response = svm->predict(testData);
+			//// 显示出来
+			//if (response >= 0)
+			//{
+			//	rectangle(roi_mser, candidates[i], Scalar(255, 255, 255), 2);
+			//	circle(roi_mser, ncenter, 2, color, -1);
+			//	numberAreaCenters.push_back(ncenter);
+			//	numberAreas.push_back(candidates[i]);
+			//	// 这里需要修改，只是方便测试
+			//	if (response == 3) { response = 2; }
+			//	numberAreaRes.push_back(response);
+			//	cout << "标签为： " << response << endl;
+			//	imshow("roi_mser", roi_mser);
+			//	waitKey(0);
+			//}
 		}
+
+		imshow("roi_mser", roi_mser);
+		waitKey(0);
+
 		RotatedRect box = fitEllipse(numberAreaCenters);
 		ellipse(roi_mser, box, Scalar(255, 255, 255), 1, CV_AA);
 		ellipse(roi_mser, Point(cvRound(el_dst._xc), cvRound(el_dst._yc)), Size(cvRound(el_dst._a), cvRound(el_dst._b)), el_dst._rad*180.0 / CV_PI, 0.0, 360.0, color, 2);
@@ -2124,9 +2167,11 @@ void writeImg(string imgReadPath, string dirPath, bool if_flip = false)
 {
 
 	Mat3b image_1 = imread(imgReadPath);
+	// 对图片进行压缩
+	resize(image_1, image_1, Size(image_1.size[1] / 2.5, image_1.size[0] / 2.5));
 	// 有些图片需要翻转
 	if (if_flip) { flip(image_1, image_1, -1); }
-	int scaleSize = 8;
+	int scaleSize = 2;
 
 	Mat3b image;
 	resize(image_1, image, Size(image_1.size[1] / scaleSize, image_1.size[0] / scaleSize));
@@ -2180,12 +2225,20 @@ void writeImg(string imgReadPath, string dirPath, bool if_flip = false)
 	vector<Ellipse> ellsYaed;
 	Mat1b gray_clone = gray.clone();
 	Mat1b gray_clone_add = gray_clone.clone();
-	threshold(gray_clone, gray_clone, 0, 255, CV_THRESH_OTSU);
-	adaptiveThreshold(gray_clone_add, gray_clone_add, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 9, 0);
-	gray_clone = gray_clone_add - gray_clone;
 
-	yaed.Detect(gray_clone, ellsYaed);
 
+	Mat1b gray_edge;
+	Canny(gray_clone, gray_edge, 3, 9, 3);
+
+	yaed.Detect(gray_edge, ellsYaed);
+
+
+	// 如果上面的canny算子获取不到椭圆就用下面的方法获取
+	if (ellsYaed.size() <= 1)
+	{
+		adaptiveThreshold(gray_clone_add, gray_clone_add, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 9, 0);
+		yaed.Detect(gray_clone_add, ellsYaed);
+	}
 
 	if (ellsYaed.size() == 0)
 	{
@@ -2438,12 +2491,21 @@ void writeImg(string imgReadPath, string dirPath, bool if_flip = false)
 
 
 
+	// 下面测试用 自动阈值 来mser，经过试验发现，这个方法切割比直接mser好
+	Mat roi_thresh = roi_dst.clone();
+	Mat roi_thresh_mser = roi_dst.clone();
+	adaptiveThreshold(roi_thresh, roi_thresh, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 25, 0);
+
+
+	//获取自定义核
+	Mat e_element = getStructuringElement(MORPH_ELLIPSE, Size(1, 1)); //第一个参数MORPH_RECT表示矩形的卷积核，当然还可以选择椭圆形的、交叉型的
+
+	erode(roi_thresh, roi_thresh, e_element);
 
 
 
 	// mser检测
-	std::vector<cv::Rect> candidates;
-	candidates = mser(roi_dst);
+	std::vector<cv::Rect> candidates = mser(roi_thresh);
 
 	int file_index = 0;
 	for (int i = 0; i < candidates.size(); ++i)
@@ -2459,8 +2521,9 @@ void writeImg(string imgReadPath, string dirPath, bool if_flip = false)
 		// 筛选掉拟合圆外面的点
 		Point ncenter = Point(candidates[i].x + candidates[i].width / 2, candidates[i].y + candidates[i].height / 2);
 		Point newsc = origin2el(bestEl.center, bestEl.angle / (float)180 * pi, ncenter);
-		float ndistance = sqrt(pow(newsc.x, 2) / pow(bestEl.size.width / 2, 2) + pow(newsc.y, 2) / pow(bestEl.size.height / 2, 2)) - 1;
-		if (ndistance >= 0) { continue; }
+		float ndistance = sqrt(pow(newsc.x, 2) / pow(bestEl.size.width / 2, 2) + pow(newsc.y, 2) / pow(bestEl.size.height / 2, 2));
+		// 这里的椭圆需要往内部缩一下，去除过多的咋点，比如刻度线
+		if (ndistance >= 0.86) { continue; }
 
 
 
@@ -2473,7 +2536,6 @@ void writeImg(string imgReadPath, string dirPath, bool if_flip = false)
 		imwrite(dirPath + "\\" + int2str(file_index) + ".jpg", mser_item);
 		// 把原图也给写进去
 		imwrite(dirPath + "\\" + "origin.jpg", image_1);
-
 	}
 
 }
@@ -2518,8 +2580,8 @@ int main()
 	int rotation_folderIndex = 0;
 	int no_rotation_folderIndex = 0;
 	int noise_folderIndex = 0;
-	// 595前的都是正常，595后面的一部分是要翻转的
-	for (int i = 0; i < 596; i++)
+	// 595前的都是正常，595 到 913 后面的一部分是要翻转的
+	for (int i = 0; i < alls.size(); i++)
 	{
 
 		string& s = alls[i];
@@ -2573,7 +2635,14 @@ int main()
 			cout << "folder_a_name : " << folder_a_name << endl;
 			_mkdir(folder_a_name.c_str());
 		}
-		writeImg(imgReadPath, dirPath);
+		if (i >= 595 && i <= 913)
+		{
+			writeImg(imgReadPath, dirPath, true);
+		}
+		else 
+		{
+			writeImg(imgReadPath, dirPath);
+		}
 	}
 	out.close();
 	return 0;
