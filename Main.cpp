@@ -24,7 +24,7 @@ last update: 23/12/2014
 #include "EllipseDetectorYaed.h"
 #include <fstream>
 #include <direct.h>
-
+#include <unordered_map>
 #include "opencv2/core/core.hpp"
 #include "opencv2/core/utility.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
@@ -637,6 +637,7 @@ std::vector<cv::Rect> mser(cv::Mat srcImage)
 		// 不符合尺寸条件判断
 		if (b_size < 800 && b_size > 50)
 		{
+			// 实验证明，往外扩张的时候识别效果更好
 			br = Rect(br.x - 3, br.y - 3, br.width + 6, br.height + 6);
 			keeps.push_back(br);
 		}
@@ -980,7 +981,7 @@ int main__()
 }
 
 
-
+/* ------------------------------------ */
 // 合并直线的操作
 
 // 1. 右搜索
@@ -1008,9 +1009,74 @@ void frontSearch(vector<bool>& isVisited, vector<int>& fronts, vector<int>& goal
 	}
 }
 
+/* ------------------------------------ */
 
 
 
+/* ------------------------------------ */
+// 合并数字区域的操作
+
+// 1. 连接点搜索
+void joinSearch(vector<bool>& isVisited, vector<int>& goal_set, vector<vector<int>>& joinTable)
+{
+	vector<int>::iterator it;
+	int i = goal_set[goal_set.size()-1];
+	isVisited[i] = true;
+	// -2表示对角线（自己连自己），-1表示没有连接，大于等于0的值表示这条连接的直线的倾斜角
+	for (int j = 0; j < joinTable.size(); j++)
+	{
+		if (i == j) { continue; }
+		if (joinTable[i][j] > -1) 
+		{
+			it = find(goal_set.begin(), goal_set.end(), j);
+			// 如果goal_set里面原本就有这个点的就不用管这个点了，继续寻找其他需要的点
+			if (it != goal_set.end()) { continue; }
+			// 否则把这个点添加进来，同时让他去找下一个点
+			goal_set.push_back(j);
+			joinSearch(isVisited, goal_set, joinTable);
+		}
+	}
+	
+
+}
+
+// 2.存储确认是数字的区域以及他们的中心点还有他们的响应
+struct SingleArea
+{
+	// 存储响应值
+	float response;
+	// 存储里面的candidates的序号
+	int cc_index;
+	// 存储中心
+	Point center;
+};
+
+// 3.存储融合的数字
+struct MergeArea
+{
+	// 存储响应值
+	float response;
+	// 存储里面的candidates的序号
+	vector<int> cc_indexs;
+	// 存储中心
+	Point center;
+	// 存储与中心的旋转角度(以三四象限分割线为开始旋转的轴)
+	float angle;
+};
+
+// 4. 根据x值来排序
+bool SortByX(SingleArea &v1, SingleArea &v2)//注意：本函数的参数的类型一定要与vector中元素的类型一致  
+{
+	//升序排列  
+	return v1.center.x < v2.center.x;
+}
+
+/* ------------------------------------ */
+
+
+
+
+/* ------------------------------------ */
 // Mser目标检测 + nms
 std::vector<cv::Rect> mser2(cv::Mat srcImage)
 {
@@ -1051,6 +1117,7 @@ std::vector<cv::Rect> mser2(cv::Mat srcImage)
 	nms(keeps, 0.5);
 	return  keeps;
 }
+/* ------------------------------------ */
 
 
 int randomTest()
@@ -1071,9 +1138,10 @@ int randomTest()
 	return 0;
 }
 
-// 检测一张图片的各种参数，main函数
 
-int zhufangfa ()
+// 检测一张图片的各种参数，main函数
+// main
+int main()
 {
 	// 给随机种子
 	srand((unsigned)time(NULL));
@@ -1086,8 +1154,12 @@ int zhufangfa ()
 
 	//glob(images_folder + "Lo3my4.*", names);
 	// 1 85是重要因素
-	string picName = "16 12.jpg";
+	string picName = "16 01.jpg";
 	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
+	//string picName = "0001.jpg";
+	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\test\\" + picName);
+	//string picName = "12 14.jpg";
+	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\12\\" + picName);
 	//names.push_back("D:\\VcProject\\biaopan\\imgs\\002.jpg");
 	int scaleSize = 2;
 	for (const auto& image_name : names)
@@ -1098,7 +1170,8 @@ int zhufangfa ()
 		Mat3b image_1 = imread(image_name);
 		// 对图片进行压缩
 		resize(image_1, image_1, Size(image_1.size[1] / 2.5, image_1.size[0] / 2.5));
-		
+		//resize(image_1, image_1, Size(image_1.size[1] / 8, image_1.size[0] / 8));
+
 		// 有些图片需要翻转
 		// flip(image_1, image_1, -1);
 		Mat3b image;
@@ -1352,7 +1425,7 @@ int zhufangfa ()
 		Mat roi_center = roi_dst.clone();
 		Mat roi_line = roi_dst.clone();
 		Mat roi_mser = roi_dst.clone();
-
+		Mat roi_merge = roi_dst.clone();
 
 
 		// 下面测试用 自动阈值 来mser，经过试验发现，这个方法切割比直接mser好
@@ -1767,10 +1840,12 @@ int zhufangfa ()
 		// candidates = mser(roi_dst);
 		// 实验证明，thresh后的mser比直接mser更好
 		candidates = ccs;
-		// 存储确认是数字的区域以及他们的中心点还有他们的响应
-		vector<Rect> numberAreas;
+
+
+		vector<SingleArea> sas;
+
+		// 存储要拟合各个数字的椭圆
 		vector<Point> numberAreaCenters;
-		vector<int> numberAreaRes;
 
 
 		// 区域显示
@@ -1783,31 +1858,32 @@ int zhufangfa ()
 			// 这里的椭圆需要往内部缩一下，去除过多的咋点，比如刻度线
 			if (ndistance >= 0.86) { continue; }
 
-
-			rectangle(roi_mser, candidates[i], color, 1);
+			// 先把所有的都标出来
+			rectangle(roi_mser, candidates[i], Scalar(0, 0, 0), 1);
 			// 把符合数字的区域框选出来
 			Mat mser_item = roi_dst(candidates[i]);
 
 
-			rectangle(roi_mser, candidates[i], Scalar(255, 255, 255), 2);
 
-			//vector<float> v = getHogData(mser_item);
-			//Mat testData(1, 144, CV_32FC1, v.data());
-			//int response = svm->predict(testData);
-			//// 显示出来
-			//if (response >= 0)
-			//{
-			//	rectangle(roi_mser, candidates[i], Scalar(255, 255, 255), 2);
-			//	circle(roi_mser, ncenter, 2, color, -1);
-			//	numberAreaCenters.push_back(ncenter);
-			//	numberAreas.push_back(candidates[i]);
-			//	// 这里需要修改，只是方便测试
-			//	if (response == 3) { response = 2; }
-			//	numberAreaRes.push_back(response);
-			//	cout << "标签为： " << response << endl;
-			//	imshow("roi_mser", roi_mser);
-			//	waitKey(0);
-			//}
+			vector<float> v = getHogData(mser_item);
+			Mat testData(1, 144, CV_32FC1, v.data());
+			int response = svm->predict(testData);
+			// 显示出来
+			if (response >= 0)
+			{
+				rectangle(roi_mser, candidates[i], Scalar(255, 255, 255), 2);
+				circle(roi_mser, ncenter, 2, color, -1);
+
+				// 为了之后的运算
+				sas.push_back({ float(response), i, ncenter });
+				numberAreaCenters.push_back(ncenter);
+				// 这里需要修改，只是方便测试
+				// if (response == 3) { response = 2; }
+
+				cout << "标签为： " << response << endl;
+				imshow("roi_mser", roi_mser);
+				waitKey(0);
+			}
 		}
 
 		imshow("roi_mser", roi_mser);
@@ -1829,66 +1905,221 @@ int zhufangfa ()
 		// 先找出变换点，也就是能作为透视变换的点，然后是变换
 		// 从有数字的里面搜寻成对存在的
 		// 存储这些合并后的区域以及他们的响应值
-		struct MergeArea
-		{
-			// 两个index存储在candidate中的序号
-			int aIndex;
-			int bIndex;
-			// 存储总共的响应值
-			float response;
-			// 存储他们的中心
-			Point center;
-		};
-		vector<MergeArea> mms;
-		
-		for (int kii=0;kii<numberAreaRes.size();kii++) 
-		{
-			int response = numberAreaRes[kii];
-			// 搜索大于0的点
-			if (response == 0) { continue; }
-			Point numcenter = numberAreaCenters[kii];
-			Point newNumCenter;
-			// 这个距离不能太长
-			float min_distance = 30;
-			// 存储与该点距离最短的有效点，如果没有的就用-1当他的伙伴
-			int cc = -1;
-			Mat forellipse_1 = roi_mser.clone();
-			rectangle(forellipse_1, numberAreas[kii], Scalar(255, 255, 255), 2);
-			// cout << "mm.kjj: " << response << endl;
-			imshow("forellipse_1", forellipse_1);
-			waitKey(0);
-			for (int kjj = 0; kjj < numberAreaRes.size(); kjj++)
-			{
-				if (numberAreaRes[kjj] > 0) { continue; }
-				float kjj_distance = point2point(numcenter, numberAreaCenters[kjj]);
-				// 离他最近的作为他的伙伴
-				// cout << "mm.kjj_distance: " << kjj_distance << endl;
-				// cout << "mm.min_distance: " << min_distance << endl;
-				// cout << "mm.kjj: " << numberAreaRes[kjj] << endl;
-				if (kjj_distance < min_distance )
-				{
-					min_distance = kjj_distance;
-					cc = kjj;
-				}
-				rectangle(forellipse_1, numberAreas[kjj], Scalar(255, 255, 255), 2);
-				imshow("forellipse_1", forellipse_1);
-				waitKey(0);
 
-			}
-			Point mm_center;
-			if (cc >= 0)
+
+
+
+		
+
+		// 中间辅助的容器
+		vector<MergeArea> mas;
+		// 规定融合的最短距离
+		float merge_distance = 50;
+		float min_merge_distance = 10;
+		// 按照一定步进慢慢缩小 merge_distance
+		float merge_distance_scale_step = 3;
+		// 记录连接情况的表，这是个二维数组
+		vector<vector<int>> joinTable(sas.size());
+		// 初始化二维数组
+
+		// 统计连线出现的所有角度的对应的边的数量
+		unordered_map<int, int> line_angle_nums;
+		// 抽出他的迭代器
+		unordered_map<int, int>::iterator  iter;
+
+		// 允许与angle 的误差
+		int angle_error = 8;
+		int max_likely_angle = -1;
+		
+		// 最终决定多大比例的线是要占最多的
+		float max_portion = 0.6;
+
+
+		// 计算统计好的那些连线
+		// 如果统计里面最多的那个连线不超过总数的80%，那么就降低阈值，重复寻找最佳边表
+
+		while (true)
+		{
+			int total_join_line_num = 0;
+			int max_join_line_num = 0;
+			int max_join_line_angle = -1;
+			for (iter = line_angle_nums.begin(); iter != line_angle_nums.end(); iter++)
 			{
-				mm_center = Point((numcenter.x + numberAreaCenters[cc].x) / 2, (numcenter.y + numberAreaCenters[cc].y) / 2);
+				if (iter->second > max_join_line_num)
+				{
+					max_join_line_num = iter->second;
+					max_join_line_angle = iter->first;
+				}
+				total_join_line_num += iter->second;
 			}
-			else if (cc < 0)
+			// 记录下在最优阈值下的最多的那个angle
+			max_likely_angle = max_join_line_angle;
+			if (total_join_line_num == 0 || max_join_line_num / (float)total_join_line_num < max_portion)
 			{
-				mm_center = numcenter;
+				merge_distance -= merge_distance_scale_step;
+				if (merge_distance < min_merge_distance)
+				{
+					// 如果阈值过低，那么就可以暂停
+					break;
+				}
+				else
+				{
+					// 重复操作，以下操作就是寻找边并更改 边表 以及 line_angle_nums
+
+					// 初始化 边表 以及 line_angle_nums
+					for (int kii = 0; kii < sas.size(); kii++)
+					{
+						joinTable[kii] = vector<int>(sas.size());
+						// -2表示对角线（自己连自己），-1表示没有连接，大于等于0的值表示这条连接的直线的倾斜角
+						for (int kjj = 0; kjj < sas.size(); kjj++)
+						{
+							if (kii == kjj) { joinTable[kii][kjj] = -2; }
+							else { joinTable[kii][kjj] = -1; }
+						}
+					}
+					line_angle_nums = unordered_map<int, int>();
+
+					// 根据阈值把点变成边。
+					for (int kii = 0; kii < sas.size(); kii++)
+					{
+						float response = sas[kii].response;
+						// 要么直接把属于融合的那个类10直接渲染成 merge_area 输出，要么就把他当做和单个区域一样的东西
+						if (response > 9)
+						{
+							//csets.push_back();
+							//continue;
+						}
+						Point sacenter = sas[kii].center;
+						// 寻找能融合的那个点，也就是距离他中心最短的那个点
+						float min_dd = merge_distance;
+						int target_sa = -1;
+						for (int kjj = 0; kjj < sas.size(); kjj++)
+						{
+							// 这里需要查看kjj是否已经连接过kii，已经连过的就跳过(-1表示未连接，-2表示自己连自己)
+							if (joinTable[kii][kjj] ==-2 || joinTable[kii][kjj] > -1 || sas[kjj].response > 9) { continue; }
+							float jj_ii_distance = point2point(sacenter, sas[kjj].center);
+							if (min_dd > jj_ii_distance) { min_dd = jj_ii_distance; target_sa = kjj; }
+						}
+						// 如果找到融合点，就修改table，若没有就不用管
+						if (target_sa >= 0)
+						{
+							// 计算出这条直线的倾斜角
+							double dy = sas[kii].center.y - sas[target_sa].center.y;
+							double dx = sas[kii].center.x - sas[target_sa].center.x;
+							// 注意，这里不用atan2，因为我们只需要在一四象限判断方向（因为只是看看斜率）,因为的到的是-90到90，向上偏移90，保证-1和-2是其他用途。
+							int s_line_angle = int(atan(dy / dx) * 180 / pi) + 90;
+
+
+							// 从统计中寻找跟这个角度类似的，如果没有就添加该项的统计，如果有就加1
+
+							bool is_new_angle = true;
+							for (iter = line_angle_nums.begin(); iter != line_angle_nums.end(); iter++)
+							{
+								// 与存在的angle进行比较，如果相差不大，就放进那个angle里面
+								// iter->first是key，iter->second是value
+								int compare_angle = iter->first;
+								if (abs(s_line_angle - compare_angle) <= angle_error) 
+								{
+									is_new_angle = false; 
+									line_angle_nums[compare_angle] = iter->second + 1; 
+									joinTable[kii][target_sa] = compare_angle;
+									joinTable[target_sa][kii] = compare_angle;
+									break; 
+								}
+							}
+							if (is_new_angle) 
+							{
+								line_angle_nums[s_line_angle] = 1; 
+								joinTable[target_sa][kii] = s_line_angle;
+								joinTable[target_sa][kii] = s_line_angle;
+							}
+
+						}
+					}
+				}
 			}
-			MergeArea mm = MergeArea{ kii, cc, response / (float)10, mm_center };
-			cout << "==========================" << endl;
-			cout << "mm.response: " << mm.response << endl;
-			mms.push_back(mm);
-		}	
+			// 如果已经达到要求，就退出循环
+			else { break; }
+		}
+
+
+
+		// 如果统计里面最多的超过80%，把那些连线角度不是最多的那些连线(根据angle判断)，在table中全部置为断开状态（即0）
+		for (int kii = 0; kii < sas.size(); kii++)
+		{
+			// -2表示对角线（自己连自己），-1表示没有连接，大于等于0的值表示这条连接的直线的倾斜角
+			for (int kjj = 0; kjj < sas.size(); kjj++)
+			{
+				if (kjj == kii) { continue; }
+				if (joinTable[kii][kjj] != max_likely_angle) { joinTable[kii][kjj] = -1; }
+			}
+		}
+
+
+		// 创建一个记录节点是否被访问的数组
+		vector<bool> set_is_visited = vector<bool>(sas.size());
+		vector<vector<int>> goal_sets;
+		for (int kii = 0; kii < sas.size(); kii++)
+		{
+			if (!set_is_visited[kii])
+			{
+				vector<int> goal_set;
+				goal_set.push_back(kii);
+				joinSearch(set_is_visited, goal_set, joinTable);
+				goal_sets.push_back(goal_set);
+			}
+		}
+
+		
+		vector<MergeArea> merge_areas;
+		// 显示数字融合效果，同时渲染成merge_area
+		for (int kii = 0; kii < goal_sets.size(); kii++)
+		{
+			vector<int> goal_set = goal_sets[kii];
+			int goal_set_size = goal_set.size();
+			vector<SingleArea> goal_set_areas;
+			vector<int> cc_indexs;
+			float x_ = 0;
+			float y_ = 0;
+			for (int kjj = 0; kjj < goal_set_size; kjj++)
+			{
+				int sas_index = goal_set[kjj];
+				circle(roi_merge, sas[sas_index].center, 1, Scalar(0, 0, 0), -1);
+				// 先把所有的都标出来
+				rectangle(roi_merge, candidates[sas[sas_index].cc_index], Scalar(255, 255, 255), 1);
+				cc_indexs.push_back(sas[sas_index].cc_index);
+				goal_set_areas.push_back(sas[sas_index]);
+				x_ += sas[sas_index].center.x;
+				y_ += sas[sas_index].center.y;
+			}
+			// 计算出新的中心
+			Point merge_center = Point(int(x_ / goal_set_size), int(y_ / goal_set_size));
+			// 画出中心以及中心与ac_center的连线
+			circle(roi_merge, merge_center, 2, Scalar(255, 255, 255), -1);
+
+			// 按照x对goal_set_areas排序，并得出他的总response
+			sort(goal_set_areas.begin(), goal_set_areas.end(), SortByX);
+			float merge_response = 0;
+			for (int kjj = 0; kjj < goal_set_size; kjj++)
+			{
+				merge_response += goal_set_areas[kjj].response * pow(10, -kjj);
+			}
+
+			// 计算与三四象限分割线的轴的夹角并 渲染成 merge_area
+			float ddy = -merge_center.y + ac_center.y;
+			float ddx = merge_center.x - ac_center.x;
+			float merge_angle = atan2(ddy, ddx) * 180 / pi;
+			if (merge_angle <= -90) { merge_angle += 90; }
+			else if (merge_angle <= 180 && merge_angle >= 0) { merge_angle = -merge_angle + 270; }
+			else if (merge_angle < 0 && merge_angle > -90) { merge_angle += 360; }
+			merge_areas.push_back({ merge_response, cc_indexs, merge_center, merge_angle });
+
+			cout << "merge_angle: " << merge_angle << endl;
+			cout << "merge_response: " << merge_response << endl;
+			imshow("roi_merge", roi_merge);
+			waitKey();
+
+		}
 		waitKey();	
 
 
@@ -1898,7 +2129,7 @@ int zhufangfa ()
 		vector<float> resNums;
 		Mat forellipse_2 = roi_mser.clone();
 		ellipse(forellipse_2, bestEl, Scalar(255, 255, 255));
-		for (int kii = 0; kii < mms.size(); kii++)
+		/*for (int kii = 0; kii < mms.size(); kii++)
 		{
 			Point center_ = Point(bestEl.center.x, bestEl.center.y);
 			Point elPoint = anchor_on_el_line(bestEl.size.width / 2, bestEl.size.height / 2, bestEl.angle / (float)180 * pi, bestEl.center, center_, mms[kii].center);
@@ -1907,7 +2138,7 @@ int zhufangfa ()
 			circle(forellipse_2, elPoint, 3, Scalar(0, 0, 0), -1);
 			imshow("forellipse_2", forellipse_2);
 			waitKey(0);
-		}
+		}*/
 
 
 		//// 创建
@@ -1994,7 +2225,8 @@ int zhufangfa ()
 
 
 
-// 做svmdata用于训练
+// 做svmdata用于训练，里面可以考虑翻转增强泛性
+// train
 int train()
 {
 	string modelPath = "D:\\VcProject\\biaopan\\data\\model.txt";
@@ -2006,8 +2238,8 @@ int train()
 	vector<int> labels;
 	// 字符串的分割标识
 	const string spliter = "===";
-	// 这里只训练28800个数据，其余用来测试
-	for (int i=0;i<28800;i++)
+	// 训练和测试过程是完全不一样的，训练是全部扎在一起训练，但是测试的时候需要按照 一个origin一份mser集合，多个origin取平均准确率
+	for (int i=0;i< raws.size();i++)
 	{
 		// 对于一张图片
 		vector<string> raw = splitString(raws[i], spliter);
@@ -2017,13 +2249,13 @@ int train()
 		trainingData.push_back(getHogData(mat));
 		labels.push_back(label);
 		// 这里做数据增强，比如镜像，翻转（原因是可能会出现这些情况）
-		for (int flipCode=-1; flipCode <2; flipCode++)
-		{
-			Mat flipMat;
-			flip(mat, flipMat, flipCode);
-			trainingData.push_back(getHogData(mat));
-			labels.push_back(label);
-		}
+		//for (int flipCode=-1; flipCode <2; flipCode++)
+		//{
+		//	Mat flipMat;
+		//	flip(mat, flipMat, flipCode);
+		//	trainingData.push_back(getHogData(mat));
+		//	labels.push_back(label);
+		//}
 	}
 
 	//设置支持向量机的参数（Set up SVM's parameters）
@@ -2081,11 +2313,12 @@ int train()
 }
 
 // 下面单体测试结果
+// singleTest
 int singleTest()
 {
 	string modelPath = "D:\\VcProject\\biaopan\\data\\model.txt";
 	Ptr<cv::ml::SVM> svm = cv::ml::SVM::load(modelPath);
-	Mat s1 = imread("D:\\VcProject\\biaopan\\data\\goodImgs\\454\\66.jpg", IMREAD_GRAYSCALE);
+	Mat s1 = imread("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\msers\\positives\\no_rotation\\120\\10\\7.jpg", IMREAD_GRAYSCALE);
 
 	vector<float> ss = getHogData(s1);
 	Mat testData(1, 144, CV_32FC1, ss.data());
@@ -2561,7 +2794,7 @@ int writeSingleImg()
 
 // 制作mser数据
 // makeMserData
-int main()
+int makeMserData()
 {
 
 	
