@@ -1064,12 +1064,32 @@ struct MergeArea
 	float angle;
 };
 
-// 4. 根据x值来排序
+// 4.判断角度，输入的标准坐标系下向量的 y 与 x，输出的是 以标准坐标系中的三四象限中间轴为0度轴，顺时针旋转的角度
+float getVecAngle(float dy, float dx)
+{
+	float vecAngle = atan2(dy, dx) * 180 / pi;
+	if (vecAngle <= -90) { vecAngle = -vecAngle - 90; }
+	else if (vecAngle <= 180 && vecAngle >= 0) { vecAngle = -vecAngle + 270; }
+	else if (vecAngle < 0 && vecAngle > -90) { vecAngle = -vecAngle + 270; }
+	return vecAngle;
+}
+
+// 4.vector<SingleArea>根据center.x值来排序
 bool SortByX(SingleArea &v1, SingleArea &v2)//注意：本函数的参数的类型一定要与vector中元素的类型一致  
 {
 	//升序排列  
 	return v1.center.x < v2.center.x;
 }
+
+
+// 5.vector<MergeArea>根据angle值来排序
+bool SortByAngle(MergeArea &v1, MergeArea &v2)//注意：本函数的参数的类型一定要与vector中元素的类型一致  
+{
+	//升序排列  
+	return v1.angle < v2.angle;
+}
+
+
 
 /* ------------------------------------ */
 
@@ -1154,12 +1174,12 @@ int main()
 
 	//glob(images_folder + "Lo3my4.*", names);
 	// 1 85是重要因素
-	string picName = "16 01.jpg";
-	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
+	//string picName = "16 01.jpg";
+	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
 	//string picName = "0001.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\test\\" + picName);
-	//string picName = "12 14.jpg";
-	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\12\\" + picName);
+	string picName = "12 14.jpg";
+	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\12\\" + picName);
 	//names.push_back("D:\\VcProject\\biaopan\\imgs\\002.jpg");
 	int scaleSize = 2;
 	for (const auto& image_name : names)
@@ -1868,6 +1888,10 @@ int main()
 			vector<float> v = getHogData(mser_item);
 			Mat testData(1, 144, CV_32FC1, v.data());
 			int response = svm->predict(testData);
+
+			// 如果发现是黏连的，就用腐蚀把他分割然后弄出来
+
+
 			// 显示出来
 			if (response >= 0)
 			{
@@ -2108,11 +2132,8 @@ int main()
 			// 计算与三四象限分割线的轴的夹角并 渲染成 merge_area
 			float ddy = -merge_center.y + ac_center.y;
 			float ddx = merge_center.x - ac_center.x;
-			float merge_angle = atan2(ddy, ddx) * 180 / pi;
-			if (merge_angle <= -90) { merge_angle += 90; }
-			else if (merge_angle <= 180 && merge_angle >= 0) { merge_angle = -merge_angle + 270; }
-			else if (merge_angle < 0 && merge_angle > -90) { merge_angle += 360; }
-			merge_areas.push_back({ merge_response, cc_indexs, merge_center, merge_angle });
+			float merge_angle = getVecAngle(ddy, ddx);
+			merge_areas.push_back({ merge_response, cc_indexs, merge_center,merge_angle });
 
 			cout << "merge_angle: " << merge_angle << endl;
 			cout << "merge_response: " << merge_response << endl;
@@ -2120,94 +2141,126 @@ int main()
 			waitKey();
 
 		}
-		waitKey();	
 
 
 
-		// 得出变换点
-		vector<Point2f> elPoints;
-		vector<float> resNums;
-		Mat forellipse_2 = roi_mser.clone();
-		ellipse(forellipse_2, bestEl, Scalar(255, 255, 255));
-		/*for (int kii = 0; kii < mms.size(); kii++)
+
+		// 按照角度给所有mergeArea排序
+		sort(merge_areas.begin(), merge_areas.end(), SortByAngle);
+
+
+		/* 
+			下面是对这些 merge_area 进行筛选，把有些响应值奇怪的点去除掉
+
+			方法是把merge_area看成一个点，其中response是y值，angle是x值，
+			如果一个点是不属于回归线的话，他与其他点连成的斜率肯定是大部分长不一样
+			但是如果一个点属于回归线的话，他与其他点连成的斜率大部分是一样的
+		*/
+
+
+		vector<int> nonsingulars;
+		// 统计所有斜率，以及这个斜率对应的所有点的序号
+		unordered_map<float, int> gradient_nums;
+		// 抽出他的迭代器
+		unordered_map<float, int>::iterator  gradient_iter;
+		// 允许的斜率的差值，按照百分比，这里的值可以设大一点，因为有可能一开始拿到的斜率是相对其他点略微远的，但是实际上是满足条件的。
+		float gradient_error = 0.3;
+		// 判断是否奇异点的那个阈值
+		float singular_thresh = 0.6;
+
+		// 下面是把符合条件的点都放到 nonsingulars 中
+		for (int kii = 0; kii < merge_areas.size(); kii++)
 		{
-			Point center_ = Point(bestEl.center.x, bestEl.center.y);
-			Point elPoint = anchor_on_el_line(bestEl.size.width / 2, bestEl.size.height / 2, bestEl.angle / (float)180 * pi, bestEl.center, center_, mms[kii].center);
-			elPoints.push_back(elPoint);
-			resNums.push_back(mms[kii].response);
-			circle(forellipse_2, elPoint, 3, Scalar(0, 0, 0), -1);
-			imshow("forellipse_2", forellipse_2);
-			waitKey(0);
-		}*/
-
-
-		//// 创建
-		//Point test_point = Point(350, 350);
-		//cout << "半径： " << point2point(ac_center, test_point) << endl;
-		//line(forellipse_2, ac_center, test_point, Scalar(255, 255, 255));
-		//for (int dgree=0;dgree <= 360; dgree++) 
-		//{
-		//	Point2f ac_center_ = Point2f(ac_center.x, ac_center.y);
-		//	Point newp = origin2el(ac_center_, dgree / (float)180 * pi, test_point);
-		//	Point nnp = Point(ac_center.x + newp.x, ac_center.y - newp.y);
-		//	cout << "角度： " << dgree << endl;
-		//	line(forellipse_2, ac_center, nnp, Scalar(255, 255, 255));
-		//	imshow("forellipse_2", forellipse_2);
-		//	waitKey(0);
-		//}
-
-		// 最后从上面的出一个结论，就是 每个数字区域相差45度，中间空余的度数为95度。半径大约是180才合理，于是可以构建出一个图来，同时还能知道各个点的具体位置
-		vector<Point2f> originPoints(elPoints.size());
-		Point pr_center = Point(200, 200);
-		int rrr = 160;
-		Point pointer = Point(pr_center.x, pr_center.y + rrr);
-		int e_pointnums = 7;
-		int empty_degree = 90;
-		float singgle_d_distance = (360 - empty_degree) / float(e_pointnums-1);
-		Point2f pr_center_ = Point2f(pr_center.x, pr_center.y);
-
-
-		Mat forellipse_3 = roi_mser.clone();
-		ellipse(forellipse_3, bestEl, Scalar(255, 255, 255));
-
-		for (int iii = e_pointnums-1;iii >= 0; iii--)
-		{
-			float ss = singgle_d_distance;
-			if (iii == e_pointnums - 1) { ss = empty_degree / 2; }
-			for (int kkk = 0; kkk < resNums.size();kkk++) 
+			// 对每个点都统计他与其他点的斜率分布，如果斜率频率最大的那个点的频率达到 一个阈值，则认为该点为非奇异点
+			for (int kjj = 0; kjj < merge_areas.size(); kjj++) 
 			{
-				if (iii / (float)10 == resNums[kkk])
+				if (kii == kjj) { continue; }
+				// 因为一般dres比较小（比10还小），而dangle比较大（差不多30），所以求出的dangle可以缩小100倍，放大斜率的值
+				float dres = merge_areas[kii].response - merge_areas[kjj].response;
+				float dangle = (merge_areas[kii].angle - merge_areas[kjj].angle) / 100.0;
+				// 这里做一下角度的小修正
+				if (dangle == 0) { dangle = 0.0001; }
+				float gradient = dres / dangle;
+
+				bool is_new_gradient = true;
+				for (gradient_iter = gradient_nums.begin(); gradient_iter != gradient_nums.end(); gradient_iter++)
 				{
-					Point e_point_ = origin2el(pr_center_, (e_pointnums - iii) * ss / (float)180 * pi, pointer);
-					Point e_point = Point(pr_center.x + e_point_.x, pr_center.y - e_point_.y);
-					originPoints[kkk] = e_point;
-					circle(forellipse_3, e_point, 3, Scalar(0, 0, 0), -1);
+
+					float compare_gradient = gradient_iter->first;
+					if (abs((gradient - compare_gradient)/ compare_gradient) <= gradient_error)
+					{
+						is_new_gradient = false;
+						gradient_nums[compare_gradient] += 1;
+						break;
+					}
+				}
+				if (is_new_gradient) { gradient_nums[gradient] = 1; }
+			}
+			// 统计并判断
+			int max_gradient_num = 0;
+			for (gradient_iter = gradient_nums.begin(); gradient_iter != gradient_nums.end(); gradient_iter++) 
+			{
+				if (gradient_iter->second > max_gradient_num) { max_gradient_num = gradient_iter->second; }
+			}
+			if (max_gradient_num / (float)(merge_areas.size() - 1) > singular_thresh) { nonsingulars.push_back(kii); }
+			// 最后把gradient_nums重置
+			gradient_nums = unordered_map<float, int>();
+		}
+
+		// 拿出符合条件的所有的点
+		vector<MergeArea> merges;
+		for (int kii = 0; kii < nonsingulars.size(); kii++)
+		{
+			merges.push_back(merge_areas[nonsingulars[kii]]);
+		}
+		// 消除merge_areas
+		// delete merge_areas;
+
+		/*
+			给直线所指刻度找范围，如果范围确定在nonsingulars里面，那么就寻找最接近的那个范围，
+			如果在nonsingulars左侧（即角度小于已知范围），则用最左侧的gradient去求他应该的数值
+			同理右侧
+		*/
+		// 因为上面已经对merge_areas做角度排序了，所以merge_areas的第一个元素就是角度最小的，最后一个元素就是角度最大的
+		float ddy = -lastPoint.y + ac_center.y;
+		float ddx = lastPoint.x - ac_center.x;
+		float pointerAngle = getVecAngle(ddy, ddx);
+		float pointerValue = 0;
+
+		int merge_last = merges.size() - 1;
+		if (pointerAngle < merges[0].angle)
+		{
+			// 寻找最近的那个gradient
+			float delta_value = (merges[1].response - merges[0].response) / (merges[1].angle - merges[0].angle) * (merges[0].angle - pointerAngle);
+			pointerValue = max(float(0), merges[0].response - delta_value);
+		}
+		else if (pointerAngle > merges[merge_last].angle)
+		{
+			int last_0 = merge_last - 1;
+			float delta_value = (merges[merge_last].response - merges[last_0].response) / (merges[merge_last].angle - merges[last_0].angle) * (pointerAngle - merges[merge_last].angle);
+			pointerValue = merges[merge_last].response + delta_value;
+		}
+		else 
+		{
+			// 寻找刚好吻合的那个区域
+			for (int kii = 0; kii < merges.size(); kii++)
+			{
+				if (pointerAngle <= merges[kii].angle)
+				{
+					float delta_value = (merges[kii].response - merges[kii-1].response) / (merges[kii].angle - merges[kii-1].angle) * (pointerAngle - merges[kii-1].angle);
+					pointerValue = merges[kii-1].response + delta_value;
+					break;
 				}
 			}
 		}
-		imshow("forellipse_3", forellipse_3);
-		waitKey(0);
+
+		cout << "读取得到的数值为： " << pointerValue << endl;
+		imshow("roi_merge", roi_merge);
+		waitKey();	
+		waitKey();
+		waitKey();
 
 
-
-		elPoints.push_back(ac_center);
-		originPoints.push_back(pr_center);
-		Mat forellipse_4 = roi_mser.clone();
-		circle(forellipse_4, lastPoint, 3, Scalar(0, 0, 0), -1);
-		Mat transform = getPerspectiveTransform(elPoints, originPoints);
-
-
-		Mat warped;
-		warpPerspective(forellipse_4, warped, transform, warped.size(), INTER_LINEAR, BORDER_CONSTANT);
-
-		
-		for (int kkk = 0; kkk < originPoints.size(); kkk++)
-		{
-			circle(warped, originPoints[kkk], 3, Scalar(0, 0, 0), -1);	
-		}
-		
-		imshow("img_trans", warped);
-		waitKey(0);
 
 	}
 
