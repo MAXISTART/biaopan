@@ -33,6 +33,7 @@ last update: 23/12/2014
 #include "opencv2/features2d.hpp"
 #include <opencv2/ml/ml.hpp>
 
+
 #include<time.h>
 #define random(x) (rand()%x)+1
 
@@ -1236,13 +1237,19 @@ int main()
 
 	//glob(images_folder + "Lo3my4.*", names);
 	// 1 85是重要因素
-	string picName = "16 43.jpg";
-	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
+
+
+	string picName = "1 01.jpg";
+	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\1\\" + picName);
+
+	//string picName = "16 43.jpg";
+	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
 	//string picName = "0001.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\test\\" + picName);
 	//string picName = "12 14.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\12\\" + picName);
-	//names.push_back("D:\\VcProject\\biaopan\\imgs\\002.jpg");
+	//string picName = "013.jpg";
+	//names.push_back("D:\\VcProject\\biaopan\\imgs\\013.jpg");
 	int scaleSize = 2;
 	for (const auto& image_name : names)
 	{
@@ -1255,7 +1262,8 @@ int main()
 		resize(image_1, image_1, Size(image_1.size[1] / 2.5, image_1.size[0] / 2.5));
 		//resize(image_1, image_1, Size(image_1.size[1] / 8, image_1.size[0] / 8));
 
-		image_1 = addGaussianNoise(image_1);
+		// 给图片添加噪声
+		//image_1 = addGaussianNoise(image_1);
 
 		// 有些图片需要翻转
 		// flip(image_1, image_1, -1);
@@ -1982,7 +1990,7 @@ int main()
 		ellipse(roi_mser, box, Scalar(255, 255, 255), 1, CV_AA);
 		ellipse(roi_mser, Point(cvRound(el_dst._xc), cvRound(el_dst._yc)), Size(cvRound(el_dst._a), cvRound(el_dst._b)), el_dst._rad*180.0 / CV_PI, 0.0, 360.0, color, 2);
 
-		imwrite("D:\\VcProject\\biaopan\\data\\temp\\1\\" + picName, roi_mser);
+		//imwrite("D:\\VcProject\\biaopan\\data\\temp\\1\\" + picName, roi_mser);
 		imshow("roi_mser", roi_mser);
 		waitKey(0);
 
@@ -2021,7 +2029,7 @@ int main()
 		int max_likely_angle = -1;
 		
 		// 最终决定多大比例的线是要占最多的
-		float max_portion = 0.6;
+		float max_portion = 0.5;
 
 
 		// 计算统计好的那些连线
@@ -2120,7 +2128,7 @@ int main()
 							{
 								line_angle_nums[s_line_angle] = 1; 
 								joinTable[target_sa][kii] = s_line_angle;
-								joinTable[target_sa][kii] = s_line_angle;
+								joinTable[kii][target_sa] = s_line_angle;
 							}
 
 						}
@@ -2231,7 +2239,7 @@ int main()
 		// 允许的斜率的差值，按照百分比，这里的值可以设大一点，因为有可能一开始拿到的斜率是相对其他点略微远的，但是实际上是满足条件的。
 		float gradient_error = 0.3;
 		// 判断是否奇异点的那个阈值
-		float singular_thresh = 0.6;
+		float singular_thresh = 0.5;
 
 		// 下面是把符合条件的点都放到 nonsingulars 中
 		for (int kii = 0; kii < merge_areas.size(); kii++)
@@ -2242,6 +2250,8 @@ int main()
 				if (kii == kjj) { continue; }
 				// 因为一般dres比较小（比10还小），而dangle比较大（差不多30），所以求出的dangle可以缩小100倍，放大斜率的值
 				float dres = merge_areas[kii].response - merge_areas[kjj].response;
+				// 这里要注意，还要去除掉那些响应和她一样的点，以防止太多相同导致结果出问题
+				if (dres == 0) { continue; }
 				float dangle = (merge_areas[kii].angle - merge_areas[kjj].angle) / 100.0;
 				// 这里做一下角度的小修正
 				if (dangle == 0) { dangle = 0.0001; }
@@ -2267,7 +2277,7 @@ int main()
 			{
 				if (gradient_iter->second > max_gradient_num) { max_gradient_num = gradient_iter->second; }
 			}
-			if (max_gradient_num / (float)(merge_areas.size() - 1) > singular_thresh) { nonsingulars.push_back(kii); }
+			if (max_gradient_num / (float)(merge_areas.size() - 1) >= singular_thresh) { nonsingulars.push_back(kii); }
 			// 最后把gradient_nums重置
 			gradient_nums = unordered_map<float, int>();
 		}
