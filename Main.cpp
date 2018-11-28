@@ -1140,6 +1140,68 @@ std::vector<cv::Rect> mser2(cv::Mat srcImage)
 /* ------------------------------------ */
 
 
+
+/* ------------------------------------ */
+// 下面的是各种噪声的生成，用于测试环境
+//生成高斯噪声
+double generateGaussianNoise(double mu, double sigma)
+{
+	//定义小值
+	const double epsilon = numeric_limits<double>::min();
+	static double z0, z1;
+	static bool flag = false;
+	flag = !flag;
+	//flag为假构造高斯随机变量X
+	if (!flag)
+		return z1 * sigma + mu;
+	double u1, u2;
+	//构造随机变量
+	do
+	{
+		u1 = rand() * (1.0 / RAND_MAX);
+		u2 = rand() * (1.0 / RAND_MAX);
+	} while (u1 <= epsilon);
+	//flag为真构造高斯随机变量
+	z0 = sqrt(-2.0*log(u1))*cos(2 * CV_PI*u2);
+	z1 = sqrt(-2.0*log(u1))*sin(2 * CV_PI*u2);
+	return z0 * sigma + mu;
+}
+
+//为图像加入高斯噪声
+Mat addGaussianNoise(Mat &srcImag)
+{
+	Mat dstImage = srcImag.clone();
+	int channels = dstImage.channels();
+	int rowsNumber = dstImage.rows;
+	int colsNumber = dstImage.cols*channels;
+	//推断图像的连续性
+	if (dstImage.isContinuous())
+	{
+		colsNumber *= rowsNumber;
+		rowsNumber = 1;
+	}
+	for (int i = 0; i < rowsNumber; i++)
+	{
+		for (int j = 0; j < colsNumber; j++)
+		{
+			//加入高斯噪声
+			int val = dstImage.ptr<uchar>(i)[j] +
+				generateGaussianNoise(2, 0.8) * 32;
+			if (val < 0)
+				val = 0;
+			if (val > 255)
+				val = 255;
+			dstImage.ptr<uchar>(i)[j] = (uchar)val;
+		}
+	}
+	return dstImage;
+}
+
+/* ------------------------------------ */
+
+
+
+
 int randomTest()
 {
 	string image_name = "F:\\chrome下载\\作业\\工业视觉\\dataset\\circle\\2.jpg";
@@ -1174,12 +1236,12 @@ int main()
 
 	//glob(images_folder + "Lo3my4.*", names);
 	// 1 85是重要因素
-	//string picName = "16 01.jpg";
-	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
+	string picName = "16 43.jpg";
+	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
 	//string picName = "0001.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\test\\" + picName);
-	string picName = "12 14.jpg";
-	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\12\\" + picName);
+	//string picName = "12 14.jpg";
+	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\12\\" + picName);
 	//names.push_back("D:\\VcProject\\biaopan\\imgs\\002.jpg");
 	int scaleSize = 2;
 	for (const auto& image_name : names)
@@ -1188,9 +1250,12 @@ int main()
 		//name = name.substr(0, name.find_last_of("."));
 
 		Mat3b image_1 = imread(image_name);
+
 		// 对图片进行压缩
 		resize(image_1, image_1, Size(image_1.size[1] / 2.5, image_1.size[0] / 2.5));
 		//resize(image_1, image_1, Size(image_1.size[1] / 8, image_1.size[0] / 8));
+
+		image_1 = addGaussianNoise(image_1);
 
 		// 有些图片需要翻转
 		// flip(image_1, image_1, -1);
