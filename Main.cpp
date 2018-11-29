@@ -1239,7 +1239,7 @@ int main()
 	// 1 85是重要因素
 
 
-	string picName = "1 01.jpg";
+	string picName = "1 41.jpg";
 	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\1\\" + picName);
 
 	//string picName = "16 43.jpg";
