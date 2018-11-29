@@ -788,7 +788,7 @@ vector<float> getHogData(Mat& originImg)
 
 
 
-// 计算点到直线的距离
+// 计算点到直线的距离，这里输入的点是图像坐标的点
 float point2Line(Vec2f& point, Vec4f& line) 
 {
 	float x1 = line[0];
@@ -800,6 +800,17 @@ float point2Line(Vec2f& point, Vec4f& line)
 	float B = -1;
 	float C = y1 - x1 * A;
 	return abs(A * point[0] - B * point[1] + C) / sqrt(pow(A, 2) + pow(B, 2));
+}
+
+
+// 计算点到直线的距离，这里的点是标准坐标的点
+float point2Line(float x, float y, float x1, float y1, float x2, float y2)
+{
+
+	float A = (y1 - y2) / (x1 - x2);
+	float B = -1;
+	float C = y1 - x1 * A;
+	return abs(A * x + B * y + C) / sqrt(pow(A, 2) + pow(B, 2));
 }
 
 
@@ -1090,7 +1101,12 @@ bool SortByAngle(MergeArea &v1, MergeArea &v2)//注意：本函数的参数的类型一定要与
 	return v1.angle < v2.angle;
 }
 
-
+// 6.vector<MergeArea>根据response值来排序，降序
+bool SortByRes(MergeArea &v1, MergeArea &v2)//注意：本函数的参数的类型一定要与vector中元素的类型一致  
+{
+	//降序排列  
+	return v1.response > v2.response;
+}
 
 /* ------------------------------------ */
 
@@ -1239,8 +1255,8 @@ int main()
 	// 1 85是重要因素
 
 
-	string picName = "1 41.jpg";
-	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\1\\" + picName);
+	string picName = "3 31.jpg";
+	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\3\\" + picName);
 
 	//string picName = "16 43.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
@@ -2011,7 +2027,7 @@ int main()
 		// 中间辅助的容器
 		vector<MergeArea> mas;
 		// 规定融合的最短距离
-		float merge_distance = 50;
+		float merge_distance = 30;
 		float min_merge_distance = 10;
 		// 按照一定步进慢慢缩小 merge_distance
 		float merge_distance_scale_step = 3;
@@ -2218,76 +2234,76 @@ int main()
 
 
 
-		// 按照角度给所有mergeArea排序
-		sort(merge_areas.begin(), merge_areas.end(), SortByAngle);
+
 
 
 		/* 
 			下面是对这些 merge_area 进行筛选，把有些响应值奇怪的点去除掉
 
-			方法是把merge_area看成一个点，其中response是y值，angle是x值，
-			如果一个点是不属于回归线的话，他与其他点连成的斜率肯定是大部分长不一样
-			但是如果一个点属于回归线的话，他与其他点连成的斜率大部分是一样的
+			方法是把merge_area看成一个点，其中response是y值，angle是x值，下面还有详细说明
+
 		*/
 
+		// 存储异值点,false表示该点是非奇异值，true表示该点为奇异值，一开始全部都归结为非奇异值
+		vector<bool> singulars(merge_areas.size(),false);
 
-		vector<int> nonsingulars;
-		// 统计所有斜率，以及这个斜率对应的所有点的序号
-		unordered_map<float, int> gradient_nums;
-		// 抽出他的迭代器
-		unordered_map<float, int>::iterator  gradient_iter;
-		// 允许的斜率的差值，按照百分比，这里的值可以设大一点，因为有可能一开始拿到的斜率是相对其他点略微远的，但是实际上是满足条件的。
-		float gradient_error = 0.3;
-		// 判断是否奇异点的那个阈值
+		// 允许与拟合直线的距离
+		float dis_error = 0.035;
+		// 判断是否奇异点的那个阈值，是一个比例值
 		float singular_thresh = 0.5;
 
-		// 下面是把符合条件的点都放到 nonsingulars 中
+		// 先对merge_areas按照响应值进行排序，响应值大的排前面
+		// 然后采用类似RANSAC算法，不同的是，每次归一化都不一样，每次都是把max线性投射到1，如果这个max点是正常点，那么归一化结果没改变，
+		// 但是如果这个max点本身就是个异值，说明他过大了，导致其他点看起来响应很小，就需要把她给排出掉，然后对其他点迭代性的进行归一化
+		// 归一化后就采用遍历的方法（不是随机，因为我们的点比较少），每次找模型最合理的那条线（穿过的点最多）
+		sort(merge_areas.begin(), merge_areas.end(), SortByRes);
+
+		// 下面是把不符合条件的点都放到 singulars 中
 		for (int kii = 0; kii < merge_areas.size(); kii++)
 		{
-			// 对每个点都统计他与其他点的斜率分布，如果斜率频率最大的那个点的频率达到 一个阈值，则认为该点为非奇异点
+			// 穿过点最多的那条线所 穿过了多少个点
+			int best_accept_num = 0;
+			// 对每个点都统计他与其他点所连成的直线是否穿过足够多的点，而是否穿过这个阈值的判定需要依据归一化
 			for (int kjj = 0; kjj < merge_areas.size(); kjj++) 
 			{
-				if (kii == kjj) { continue; }
-				// 因为一般dres比较小（比10还小），而dangle比较大（差不多30），所以求出的dangle可以缩小100倍，放大斜率的值
-				float dres = merge_areas[kii].response - merge_areas[kjj].response;
-				// 这里要注意，还要去除掉那些响应和她一样的点，以防止太多相同导致结果出问题
-				if (dres == 0) { continue; }
-				float dangle = (merge_areas[kii].angle - merge_areas[kjj].angle) / 100.0;
-				// 这里做一下角度的小修正
-				if (dangle == 0) { dangle = 0.0001; }
-				float gradient = dres / dangle;
+				// 不能连接已经是奇异值的点
+				if (kii == kjj || singulars[kjj]) { continue; }
+				// 找出目前非奇异值中最大的那个响应值，用它来进行归一化
+				float max_res = -1.0;
+				for (int kdd = 0; kdd < singulars.size(); kdd++) { if (!singulars[kdd]) { max_res = merge_areas[kdd].response; break; } }
 
-				bool is_new_gradient = true;
-				for (gradient_iter = gradient_nums.begin(); gradient_iter != gradient_nums.end(); gradient_iter++)
+				// 计算与kjj相连的直线穿过其他点的数量
+				int accept_num = 0;
+				for (int kdd = 0; kdd < singulars.size(); kdd++)
 				{
-
-					float compare_gradient = gradient_iter->first;
-					if (abs((gradient - compare_gradient)/ compare_gradient) <= gradient_error)
-					{
-						is_new_gradient = false;
-						gradient_nums[compare_gradient] += 1;
-						break;
-					}
+					if (kjj == kdd || singulars[kdd]) { continue; }
+					float ddx = merge_areas[kdd].angle / 360; float ddy = merge_areas[kdd].response / max_res;
+					float ddx1 = merge_areas[kii].angle / 360; float ddy1 = merge_areas[kii].response / max_res;
+					float ddx2 = merge_areas[kjj].angle / 360; float ddy2 = merge_areas[kjj].response / max_res;
+					float m_dis = point2Line(ddx, ddy, ddx1, ddy1, ddx2, ddy2);
+					if (m_dis <= dis_error) { accept_num++; };
 				}
-				if (is_new_gradient) { gradient_nums[gradient] = 1; }
+				// 如果这条连线穿过的点比之前还好，需要替换一下
+				if (accept_num >= best_accept_num) { best_accept_num = accept_num; }
 			}
-			// 统计并判断
-			int max_gradient_num = 0;
-			for (gradient_iter = gradient_nums.begin(); gradient_iter != gradient_nums.end(); gradient_iter++) 
-			{
-				if (gradient_iter->second > max_gradient_num) { max_gradient_num = gradient_iter->second; }
-			}
-			if (max_gradient_num / (float)(merge_areas.size() - 1) >= singular_thresh) { nonsingulars.push_back(kii); }
-			// 最后把gradient_nums重置
-			gradient_nums = unordered_map<float, int>();
+			// 统计并判断best_accept_num是否真的满足一定比例，不满足那么他就是奇异值点
+			if (best_accept_num < singular_thresh * singulars.size()) { singulars[kii] = true; }
 		}
+
+
 
 		// 拿出符合条件的所有的点
 		vector<MergeArea> merges;
-		for (int kii = 0; kii < nonsingulars.size(); kii++)
+		for (int kii = 0; kii < singulars.size(); kii++)
 		{
-			merges.push_back(merge_areas[nonsingulars[kii]]);
+			if (singulars[kii]) { continue; }
+			cout << "满足的响应值为： " << merge_areas[kii].response << endl;
+			merges.push_back(merge_areas[kii]);
 		}
+
+		// 按照角度给所有mergeArea排序
+		sort(merges.begin(), merges.end(), SortByAngle);
+
 		// 消除merge_areas
 		// delete merge_areas;
 
