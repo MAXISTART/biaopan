@@ -1257,8 +1257,8 @@ int main()
 	// 1 85是重要因素
 
 
-	string picName = "4 21.jpg";
-	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\4\\" + picName);
+	string picName = "7 41.jpg";
+	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\7\\" + picName);
 
 	//string picName = "16 43.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
@@ -1406,11 +1406,13 @@ int main()
 		Mat1b& roi_dst = roi_zero;
 		// 存储目标的可能支持线
 		vector<Vec4f> tLines;
+		// 允许直线距离e_center的距离
+		float dis2e_center = 20.0;
 
 
 		Ptr<LineSegmentDetector> ls = createLineSegmentDetector(LSD_REFINE_STD);
 		Mat bl_drawLines;
-
+		Vec2f e_center = Vec2f(200, 200);
 
 		while(index < el_size ) {
 			Ellipse& e = ellsYaed[index];
@@ -1472,14 +1474,14 @@ int main()
 			Mat drawnLines = roi_3.clone();
 			
 
-			Vec2f e_center = Vec2f(200, 200);
+			
 			cout << "lines_std.size() : " << lines_std.size() << endl;
 
 			for (int j=0;j<lines_std.size();j++) 
 			{
 				// 筛选掉那些距离中心比较远的线
 				float distance = point2Line(e_center, lines_std[j]);
-				if (distance <= 10)
+				if (distance <= dis2e_center)
 				{
 					Vec4f l = lines_std[j];
 					// 还要分头尾两点
@@ -1561,15 +1563,39 @@ int main()
 		// 下面尝试腐蚀多次，得出我们想要的指针的直线，而不是通过之前的步骤做到
 		Mat d_element = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
 		Mat line_roi;
+		vector<Vec4f> tLines2;
+		vector<Vec4f> tLines1;
 		erode(roi_thresh, line_roi, d_element);
 		erode(line_roi, line_roi, d_element);
 		erode(line_roi, line_roi, d_element);
-		vector<Vec4f> line_roi_lines;
-		ls->detect(line_roi, line_roi_lines);
-		ls->drawSegments(roi_line, line_roi_lines);
+		ls->detect(line_roi, tLines1);
+		//ls->drawSegments(roi_line, tLines1);
 		imshow("line_roi11", line_roi);
 		imshow("roi_line11", roi_line);
+		// 给他区分尾点和非尾点
+		for (int j = 0; j < tLines1.size(); j++)
+		{
+			// 筛选掉那些距离中心比较远的线
+			float distance = point2Line(e_center, tLines1[j]);
 
+			if (distance <= dis2e_center)
+			{
+				Vec4f l = tLines1[j];
+				// 还要分头尾两点
+				Vec4f dl;
+				if (point2point(l[0], l[1], e_center[0], e_center[1]) >= point2point(l[2], l[3], e_center[0], e_center[1]))
+				{
+					dl = Vec4f(l[2], l[3], l[0], l[1]);
+				}
+				else
+				{
+					dl = l;
+				}
+				tLines2.push_back(dl);
+			}
+		}
+		ls->drawSegments(roi_line, tLines2);
+		waitKey(0);
 
 		imshow("roi_thresh", roi_thresh);
 		waitKey(0);
@@ -1654,29 +1680,31 @@ int main()
 		float angle = 4;
 		float angelCos = cos(angle *  pi / 180);
 		
+		// 注意这里读取的 Lines 是 上面 通过  腐蚀得到的那个线，而不是原先的那个线，但是拟合椭圆的时候用的是原先的线
+
 		// 存储这些后线对
-		vector<int> backs = vector<int>(tLines.size());
+		vector<int> backs = vector<int>(tLines2.size());
 		// 存储这些前线对，方便之后的计算
-		vector<int> fronts = vector<int>(tLines.size());
+		vector<int> fronts = vector<int>(tLines2.size());
 
 		// 初始化这些对的值，默认为-1
-		for (int k=tLines.size()-1;k>=0;--k)
+		for (int k= tLines2.size()-1;k>=0;--k)
 		{
 			backs[k] = -1;
 			fronts[k] = -1;
 		}
 
-		for (int i=tLines.size() - 1;i >= 0; --i) 
+		for (int i=tLines2.size() - 1;i >= 0; --i)
 		{
-			Vec4f& line1 = tLines[i];
+			Vec4f& line1 = tLines2[i];
 			// 搜索半径内，首先是属于自己后面的线，然后是中点相连所成的角度不能大过某个值，并且取距离自己最短的那些线，最后是看这条线是不是已经成为了别人的后线了
 			int mIndex = i;
 			float mDis = 1000;
-			for (int j = tLines.size() - 1; j >= 0; --j) 
+			for (int j = tLines2.size() - 1; j >= 0; --j)
 			{
 				if (i == j)
 					continue;
-				Vec4f& line2 = tLines[j];
+				Vec4f& line2 = tLines2[j];
 
 				// 先判断是不是自己后面的线
 				if (point2point(Point(line1[0], line1[1]), ac_center) > point2point(Point(line2[0], line2[1]), ac_center))
@@ -1725,12 +1753,12 @@ int main()
 		}
 
 		// 下面只是检验上面是否出错
-		for (int i = tLines.size() - 1; i >= 0; --i)
+		for (int i = tLines2.size() - 1; i >= 0; --i)
 		{
 			//cout << "backs-" << i << " : " << backs[i] << endl;
 			//cout << "fronts-" << i << " : " << fronts[i] << endl;
 			int n = 0;
-			for (int j = tLines.size() - 1; j >= 0; --j) {
+			for (int j = tLines2.size() - 1; j >= 0; --j) {
 				if (backs[j] == i)
 					n++;
 			}
@@ -1781,7 +1809,7 @@ int main()
 			for (int j = 0; j <= goal_line.size() - 1; ++j)
 			{
 				int li = goal_line[j];
-				Vec4f ln = tLines[li];
+				Vec4f ln = tLines2[li];
 				Point point1 = Point(ln[0], ln[1]);
 				Point point2 = Point(ln[2], ln[3]);
 				cv::line(roi_line, point1, point2, cc, 2);
@@ -1802,7 +1830,7 @@ int main()
 			{
 				int li = goal_line[j];
 				// 这里要进行平方，因为越长的占比应该越大
-				total_length += point2point(tLines[li]);
+				total_length += point2point(tLines2[li]);
 			}
 			if (total_length > maxLength) { maxLength = total_length; maxLine = goal_line; }
 		}
@@ -1811,7 +1839,7 @@ int main()
 		for (int j = 0; j <= maxLine.size() - 1; ++j)
 		{
 			int li = maxLine[j];
-			Vec4f ln = tLines[li];
+			Vec4f ln = tLines2[li];
 			Point point1 = Point(ln[0], ln[1]);
 			Point point2 = Point(ln[2], ln[3]);
 			cv::line(roi_line, point1, point2, aa, 2);
@@ -1820,12 +1848,13 @@ int main()
 		waitKey();
 
 		// 拿最长的线的结尾当做指针线的尾点
-		Vec4f last_part = tLines[maxLine[maxLine.size() - 1]];
+		Vec4f last_part = tLines2[maxLine[maxLine.size() - 1]];
 		Point lastPoint = Point(last_part[2], last_part[3]);
 
 
 		// 3. 上面方法不行就用回以前的 bim+支持点方向分类 然后抽样获取椭圆
 		// 给tLine进行分类（按角度分类），比如按照40度一个扇区，就有9个扇区 
+		// 这个 tLine 和用来识别指针的 line是不一样的。
 		int sangle = 40;
 		vector<vector<int>> sangles_(360 / sangle);
 		for (int ki = tLines.size() - 1; ki >= 0; --ki)
