@@ -1406,7 +1406,7 @@ int main()
 		Mat1b& roi_dst = roi_zero;
 		// 存储目标的可能支持线
 		vector<Vec4f> tLines;
-		// 允许直线距离e_center的距离
+		 允许直线距离e_center的距离
 		float dis2e_center = 20.0;
 
 
