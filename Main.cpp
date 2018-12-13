@@ -810,7 +810,8 @@ float point2Line(float x, float y, float x1, float y1, float x2, float y2)
 	float A = (y1 - y2) / (x1 - x2);
 	float B = -1;
 	float C = y1 - x1 * A;
-	return abs(A * x + B * y + C) / sqrt(pow(A, 2) + pow(B, 2));
+	float dis = abs(A * x + B * y + C) / sqrt(pow(A, 2) + pow(B, 2));
+	return dis;
 }
 
 
@@ -1068,12 +1069,13 @@ struct MergeArea
 {
 	// 存储响应值
 	float response;
+	// 存储与中心的旋转角度(以三四象限分割线为开始旋转的轴)
+	float angle;
 	// 存储里面的candidates的序号
 	vector<int> cc_indexs;
 	// 存储中心
 	Point center;
-	// 存储与中心的旋转角度(以三四象限分割线为开始旋转的轴)
-	float angle;
+
 };
 
 // 4.判断角度，输入的标准坐标系下向量的 y 与 x，输出的是 以标准坐标系中的三四象限中间轴为0度轴，顺时针旋转的角度
@@ -1081,7 +1083,7 @@ float getVecAngle(float dy, float dx)
 {
 	float vecAngle = atan2(dy, dx) * 180 / pi;
 	if (vecAngle <= -90) { vecAngle = -vecAngle - 90; }
-	else if (vecAngle <= 180 && vecAngle >= 0) { vecAngle = -vecAngle + 270; }
+	else if (vecAngle >= 0) { vecAngle = -vecAngle + 270; }
 	else if (vecAngle < 0 && vecAngle > -90) { vecAngle = -vecAngle + 270; }
 	return vecAngle;
 }
@@ -1255,8 +1257,8 @@ int main()
 	// 1 85是重要因素
 
 
-	string picName = "3 31.jpg";
-	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\3\\" + picName);
+	string picName = "4 21.jpg";
+	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\4\\" + picName);
 
 	//string picName = "16 43.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
@@ -1406,7 +1408,8 @@ int main()
 		vector<Vec4f> tLines;
 
 
-
+		Ptr<LineSegmentDetector> ls = createLineSegmentDetector(LSD_REFINE_STD);
+		Mat bl_drawLines;
 
 
 		while(index < el_size ) {
@@ -1459,7 +1462,7 @@ int main()
 			// gray_clone, gray_edge, 3, 9, 3
 			// Canny(roi_2, roi_2, 3, 9, 3); // Apply canny edge//可选canny算子
 
-			Ptr<LineSegmentDetector> ls = createLineSegmentDetector(LSD_REFINE_STD);
+			
 			vector<Vec4f> lines_std;
 			vector<Vec4f> lines_dst;
 
@@ -1513,9 +1516,10 @@ int main()
 				el_dst = e;
 				roi_dst = roi_3;
 				tLines = lines_dst;
+				bl_drawLines = drawnLines;
 			}
 
-			imshow("drawnLines", drawnLines);
+			//imshow("drawnLines", drawnLines);
 			imshow("Yaed", resultImage);
 			cout << "index : " << index << endl;
 			waitKey();
@@ -1523,7 +1527,7 @@ int main()
 
 
 		//imwrite(out_folder + name + ".png", resultImage);
-
+		imshow("drawnLines", bl_drawLines);
 
 
 		// 显示椭圆效果
@@ -1553,6 +1557,20 @@ int main()
 		erode(roi_thresh, roi_thresh, e_element);
 		//dilate(roi_thresh, roi_thresh, d_element);
 		//erode(roi_thresh, roi_thresh, element);
+
+		// 下面尝试腐蚀多次，得出我们想要的指针的直线，而不是通过之前的步骤做到
+		Mat d_element = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
+		Mat line_roi;
+		erode(roi_thresh, line_roi, d_element);
+		erode(line_roi, line_roi, d_element);
+		erode(line_roi, line_roi, d_element);
+		vector<Vec4f> line_roi_lines;
+		ls->detect(line_roi, line_roi_lines);
+		ls->drawSegments(roi_line, line_roi_lines);
+		imshow("line_roi11", line_roi);
+		imshow("roi_line11", roi_line);
+
+
 		imshow("roi_thresh", roi_thresh);
 		waitKey(0);
 		
@@ -2222,7 +2240,7 @@ int main()
 			float ddy = -merge_center.y + ac_center.y;
 			float ddx = merge_center.x - ac_center.x;
 			float merge_angle = getVecAngle(ddy, ddx);
-			merge_areas.push_back({ merge_response, cc_indexs, merge_center,merge_angle });
+			merge_areas.push_back({ merge_response, merge_angle, cc_indexs, merge_center});
 
 			cout << "merge_angle: " << merge_angle << endl;
 			cout << "merge_response: " << merge_response << endl;
@@ -2248,9 +2266,11 @@ int main()
 		vector<bool> singulars(merge_areas.size(),false);
 
 		// 允许与拟合直线的距离
-		float dis_error = 0.035;
-		// 判断是否奇异点的那个阈值，是一个比例值
+		float dis_error = 0.0125;
+		// 判断是否奇异点的那个阈值，是一个比例值,这里稍微处理下，如果点比较密集的话，可以放松这个限制
 		float singular_thresh = 0.5;
+		if (merge_areas.size() >= 8) { singular_thresh = 0.35; }
+
 
 		// 先对merge_areas按照响应值进行排序，响应值大的排前面
 		// 然后采用类似RANSAC算法，不同的是，每次归一化都不一样，每次都是把max线性投射到1，如果这个max点是正常点，那么归一化结果没改变，
@@ -2261,6 +2281,10 @@ int main()
 		// 下面是把不符合条件的点都放到 singulars 中
 		for (int kii = 0; kii < merge_areas.size(); kii++)
 		{
+			if (kii == 11) 
+			{
+				cout << "in" << endl;
+			}
 			// 穿过点最多的那条线所 穿过了多少个点
 			int best_accept_num = 0;
 			// 对每个点都统计他与其他点所连成的直线是否穿过足够多的点，而是否穿过这个阈值的判定需要依据归一化
@@ -2272,11 +2296,12 @@ int main()
 				float max_res = -1.0;
 				for (int kdd = 0; kdd < singulars.size(); kdd++) { if (!singulars[kdd]) { max_res = merge_areas[kdd].response; break; } }
 
-				// 计算与kjj相连的直线穿过其他点的数量
-				int accept_num = 0;
+				// 计算与kjj相连的直线穿过其他点的数量，本身直线就已经穿过两个点了，那两个点不用计算
+				int accept_num = 2;
 				for (int kdd = 0; kdd < singulars.size(); kdd++)
 				{
-					if (kjj == kdd || singulars[kdd]) { continue; }
+					// 奇异点不在考虑范围
+					if (kjj == kdd || kii == kdd || singulars[kdd]) { continue; }
 					float ddx = merge_areas[kdd].angle / 360; float ddy = merge_areas[kdd].response / max_res;
 					float ddx1 = merge_areas[kii].angle / 360; float ddy1 = merge_areas[kii].response / max_res;
 					float ddx2 = merge_areas[kjj].angle / 360; float ddy2 = merge_areas[kjj].response / max_res;
@@ -2293,16 +2318,36 @@ int main()
 
 
 		// 拿出符合条件的所有的点
+		vector<MergeArea> merges_1;
 		vector<MergeArea> merges;
+
+		cout << "第一次确认后" << endl;
 		for (int kii = 0; kii < singulars.size(); kii++)
 		{
 			if (singulars[kii]) { continue; }
 			cout << "满足的响应值为： " << merge_areas[kii].response << endl;
-			merges.push_back(merge_areas[kii]);
+			merges_1.push_back(merge_areas[kii]);
 		}
 
 		// 按照角度给所有mergeArea排序
-		sort(merges.begin(), merges.end(), SortByAngle);
+		sort(merges_1.begin(), merges_1.end(), SortByAngle);
+
+
+		// 这里再做多一次修正，sort完之后一定是严格单调递增的，如果出现递减或者不变的情况，那么就需要去除掉了
+		merges.push_back(merges_1[0]);
+		int merges_pos = 0;
+		cout << "第二次确认后" << endl;
+		cout << "满足的响应值为： " << merges_1[0].response << endl;
+		for (int kii = 1; kii < merges_1.size(); kii++)
+		{
+			if (merges_1[kii].response <= merges[merges_pos].response) { continue; }
+			else { merges.push_back(merges_1[kii]); merges_pos++; cout << "满足的响应值为： " << merges_1[kii].response << endl;}
+		}
+
+
+
+		// 这里可以添加算法来计算dis_error是否需要再次减小，这里判断下异值点常见的现象，比如是否存在相等的点
+
 
 		// 消除merge_areas
 		// delete merge_areas;
