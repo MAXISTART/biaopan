@@ -1114,6 +1114,17 @@ bool SortByRes(MergeArea &v1, MergeArea &v2)//注意：本函数的参数的类型一定要与ve
 
 
 
+/* ------------------------------------ */
+// vector<Ellipse>根据椭圆的面积大小值来排序，降序
+bool SortByEllipseArea(Ellipse &e1, Ellipse &e2)//注意：本函数的参数的类型一定要与vector中元素的类型一致  
+{
+	//降序排列  
+	return (e1._a*e1._b) > (e2._a*e2._b);
+}
+/* ------------------------------------ */
+
+
+
 
 /* ------------------------------------ */
 // Mser目标检测 + nms
@@ -1257,8 +1268,8 @@ int main()
 	// 1 85是重要因素
 
 
-	string picName = "7 41.jpg";
-	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\7\\" + picName);
+	string picName = "2 21.jpg";
+	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\2\\" + picName);
 
 	//string picName = "16 43.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
@@ -1406,13 +1417,19 @@ int main()
 		Mat1b& roi_dst = roi_zero;
 		// 存储目标的可能支持线
 		vector<Vec4f> tLines;
-		 允许直线距离e_center的距离
+		// 允许直线距离e_center的距离
 		float dis2e_center = 20.0;
 
 
 		Ptr<LineSegmentDetector> ls = createLineSegmentDetector(LSD_REFINE_STD);
 		Mat bl_drawLines;
 		Vec2f e_center = Vec2f(200, 200);
+
+
+		// 先按照面积大小排序这些椭圆
+		// 然后再从大的找起，寻找满足一定要求的椭圆
+		sort(ellsYaed.begin(), ellsYaed.end(), SortByEllipseArea);
+
 
 		while(index < el_size ) {
 			Ellipse& e = ellsYaed[index];
@@ -1510,15 +1527,16 @@ int main()
 			index += 1;
 
 
-			// 从里面选出 可能支持点 超过 35 的，同时是最大的，然后 面积也可以限定一下，一般选取面积最大，长的最像圆的
-			cout << "目前的面积是： " << (el_dst._a * el_dst._b) << "   现在的面积是: " << (e._a * e._b) << endl;
-			if (lines_dst.size() >= min_vec_num && (el_dst._a * el_dst._b) <= (e._a * e._b))
+			// 从里面选出 可能支持点 超过 35 的，一旦找到了就不需要再继续找了，因为前面已经确保这是足够大的椭圆了（按照面积排序过了）
+			
+			if (lines_dst.size() >= min_vec_num)
 			{
 				min_vec_num = lines_dst.size();
 				el_dst = e;
 				roi_dst = roi_3;
 				tLines = lines_dst;
 				bl_drawLines = drawnLines;
+				break;
 			}
 
 			//imshow("drawnLines", drawnLines);
