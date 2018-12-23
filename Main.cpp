@@ -549,6 +549,63 @@ int main2(int argc, char** argv)
 }
 
 
+// 计算点到直线的距离，这里输入的点是图像坐标的点
+float point2Line(Vec2f& point, Vec4f& line)
+{
+	float x1 = line[0];
+	float y1 = -line[1];
+	float x2 = line[2];
+	float y2 = -line[3];
+
+	float A = (y1 - y2) / (x1 - x2);
+	float B = -1;
+	float C = y1 - x1 * A;
+	return abs(A * point[0] - B * point[1] + C) / sqrt(pow(A, 2) + pow(B, 2));
+}
+
+
+// 计算点到直线的距离，这里的点是标准坐标的点
+float point2Line(float x, float y, float x1, float y1, float x2, float y2)
+{
+
+	float A = (y1 - y2) / (x1 - x2);
+	float B = -1;
+	float C = y1 - x1 * A;
+	float dis = abs(A * x + B * y + C) / sqrt(pow(A, 2) + pow(B, 2));
+	return dis;
+}
+
+
+// 计算点到点的距离
+float point2point(float x1, float y1, float x2, float y2)
+{
+	return sqrt(pow((x1 - x2), 2) + pow((y1 - y2), 2));
+}
+// 计算点到点的距离
+float point2point(int x1, int y1, int x2, int y2)
+{
+	return sqrt(float(pow((x1 - x2), 2) + pow((y1 - y2), 2)));
+}
+
+// 计算点到点的距离
+float point2point(Point point1, Point point2)
+{
+	return sqrt(pow((point1.x - point2.x), 2) + pow((point1.y - point2.y), 2));
+}
+
+// 计算点到点的距离
+float point2point(Vec4f line)
+{
+	return sqrt(pow((line[0] - line[2]), 2) + pow((line[1] - line[3]), 2));
+}
+
+// 计算两直线间的夹角cos值
+float line2lineAngleCos(Vec4f line1, Vec4f line2)
+{
+	float leng1 = point2point(line1);
+	float leng2 = point2point(line2);
+	return ((line1[2] - line1[0]) * (line2[2] - line2[0]) + (line1[3] - line1[1]) * (line2[3] - line2[1])) / leng1 / leng2;
+}
 
 
 
@@ -596,18 +653,71 @@ void nms(vector<Rect>& proposals, const double nms_threshold)
 	vector<Rect> new_proposals;
 	for (const auto i : index) {
 		if (!del[i]) new_proposals.push_back(proposals[i]);
+
 	}
 	proposals = new_proposals;
+}
+
+// 加个别的项进去
+void nms2(vector<Rect>& proposals,vector<int>& indexes, const double nms_threshold)
+{
+	// 这里的分数用的是面积
+	vector<int> scores;
+	for (auto i : proposals) scores.push_back(i.area());
+
+	vector<int> index;
+	for (int i = 0; i < scores.size(); ++i) {
+		index.push_back(i);
+	}
+
+	sort(index.begin(), index.end(), [&](int a, int b) {
+		return scores[a] > scores[b];
+	});
+
+	vector<bool> del(scores.size(), false);
+	for (size_t i = 0; i < index.size(); i++) {
+		if (!del[index[i]]) {
+			for (size_t j = i + 1; j < index.size(); j++) {
+				if (iou(proposals[index[i]], proposals[index[j]]) > nms_threshold) {
+					del[index[j]] = true;
+				}
+			}
+		}
+	}
+
+	vector<Rect> new_proposals;
+	vector<int> new_indexes;
+	for (const auto i : index) {
+		if (!del[i])
+		{
+			new_proposals.push_back(proposals[i]);
+			new_indexes.push_back(i);
+		}
+
+	}
+	proposals = new_proposals;
+	indexes = new_indexes;
 }
 
 
 
 
-
-// Mser目标检测 + nms
-std::vector<cv::Rect> mser(cv::Mat srcImage)
+// 画出旋转矩阵
+void drawRotatedRect(Mat& drawer, RotatedRect& rrect)
 {
+	// 获取旋转矩形的四个顶点
+	cv::Point2f* vertices = new cv::Point2f[4];
+	rrect.points(vertices);
+	//逐条边绘制
+	for (int j = 0; j < 4; j++)
+	{
+		cv::line(drawer, vertices[j], vertices[(j + 1) % 4], cv::Scalar(0, 255, 0));
+	}
+}
 
+// Mser目标检测 + nms，其中rrects存储每个Rect中的那个旋转矩阵
+std::vector<cv::Rect> mser(cv::Mat srcImage, vector<cv::RotatedRect>& rrects)
+{
 
 	std::vector<std::vector<cv::Point> > regContours;
 	
@@ -625,11 +735,29 @@ std::vector<cv::Rect> mser(cv::Mat srcImage)
 	cv::Mat mserMapMat = cv::Mat::zeros(srcImage.size(), CV_8UC1);
 	cv::Mat mserNegMapMat = cv::Mat::zeros(srcImage.size(), CV_8UC1);
 
+	Mat mser_show = srcImage.clone();
+
+	vector<RotatedRect> rrecs;
 	for (int i = (int)regContours.size() - 1; i >= 0; i--)
 	{
+
 		// 根据检测区域点生成mser结果
 		std::vector<Point> hull;
+		// 计算凸包
 		convexHull(regContours[i], hull);
+
+		// 下面是为了检测角度而设的。
+		// mser检测出来的是连通域的所有点
+		// 画出凸包或者原来的点，画出来会发现这个结果是挺不错的，但是数字粘连的情况也出现了，所以需要计算角度然后通过投影来分离
+		// polylines(mser_show, regContours[i], 1, Scalar(255, 0, 0));
+		// 获取最小包围矩形
+		RotatedRect rotatedRect = minAreaRect(regContours[i]);
+		rrecs.push_back(rotatedRect);
+
+		drawRotatedRect(mser_show, rotatedRect);
+
+
+
 		Rect br = boundingRect(hull);
 		// 宽高比例
 		double wh_ratio = br.height / double(br.width);
@@ -646,10 +774,61 @@ std::vector<cv::Rect> mser(cv::Mat srcImage)
 		
 		//keeps.push_back(br);
 	}
+
+	imshow("mser_show", mser_show);
+	waitKey(0);
 	// 用nms抑制
 	nms(keeps, 0.7);
+
+
+	mser_show = srcImage.clone();
+	// 找出每个keep中的矩形所包含的旋转矩阵，
+	vector<cv::RotatedRect> rrects_;
+	for (int j = 0; j < keeps.size(); j++)
+	{
+		float karea = keeps[j].width * keeps[j].height;
+		rectangle(mser_show, keeps[j], Scalar(255, 255, 255), 2);
+		RotatedRect krec;
+		float max_size = 0.2;
+		for (int i = 0; i < rrecs.size(); i++)
+		{
+			
+			//获取旋转矩形的四个顶点
+			cv::Point2f* vertices = new cv::Point2f[4];
+			rrecs[i].points(vertices);
+			
+			// 计算两个矩形的重叠率
+			//float area = point2point(vertices[0], vertices[1]) * point2point(vertices[0], vertices[3]);
+
+			if (rrecs[i].center.x >= keeps[j].x && rrecs[i].center.y >= keeps[j].y 
+				&& rrecs[i].center.x <= keeps[j].x+ keeps[j].width && rrecs[i].center.y <= keeps[j].y + keeps[j].height)
+			{
+				//float area = point2point(vertices[0], vertices[1]) * point2point(vertices[0], vertices[3]);
+				float area = rrecs[i].size.height * rrecs[i].size.width;
+				// 取面积最大且有一定阈值的作为判断方向的准则
+				if (area / karea >= max_size && area / karea <= 0.8)
+				{
+					max_size = area / karea; 
+					krec = rrecs[i];
+				}
+			}
+		}
+		// 即使没有新的矩形，也要放进去一个已经有的。
+		rrects_.push_back(krec);
+		// 如果max_size没有变化，说明没有满足要求的内接旋转矩阵
+		if (max_size == 0.2) { continue; }
+		drawRotatedRect(mser_show, krec);
+		//imshow("mser_show", mser_show);
+		//waitKey(0);
+	}
+	rrects = rrects_;
+
+	imshow("mser_show", mser_show);
+	waitKey(0);
 	return  keeps;
 }
+
+
 
 
 
@@ -788,63 +967,6 @@ vector<float> getHogData(Mat& originImg)
 
 
 
-// 计算点到直线的距离，这里输入的点是图像坐标的点
-float point2Line(Vec2f& point, Vec4f& line) 
-{
-	float x1 = line[0];
-	float y1 = -line[1];
-	float x2 = line[2];
-	float y2 = -line[3];
-
-	float A = (y1 - y2) / (x1 - x2);
-	float B = -1;
-	float C = y1 - x1 * A;
-	return abs(A * point[0] - B * point[1] + C) / sqrt(pow(A, 2) + pow(B, 2));
-}
-
-
-// 计算点到直线的距离，这里的点是标准坐标的点
-float point2Line(float x, float y, float x1, float y1, float x2, float y2)
-{
-
-	float A = (y1 - y2) / (x1 - x2);
-	float B = -1;
-	float C = y1 - x1 * A;
-	float dis = abs(A * x + B * y + C) / sqrt(pow(A, 2) + pow(B, 2));
-	return dis;
-}
-
-
-// 计算点到点的距离
-float point2point(float x1, float y1, float x2, float y2)
-{
-	return sqrt(pow((x1 - x2), 2) + pow((y1 - y2), 2));
-}
-// 计算点到点的距离
-float point2point(int x1, int y1, int x2, int y2)
-{
-	return sqrt(float(pow((x1 - x2), 2) + pow((y1 - y2), 2)));
-}
-
-// 计算点到点的距离
-float point2point(Point point1, Point point2)
-{
-	return sqrt(pow((point1.x - point2.x), 2) + pow((point1.y - point2.y), 2));
-}
-
-// 计算点到点的距离
-float point2point(Vec4f line)
-{
-	return sqrt(pow((line[0] - line[2]), 2) + pow((line[1] - line[3]), 2));
-}
-
-// 计算两直线间的夹角cos值
-float line2lineAngleCos(Vec4f line1, Vec4f line2) 
-{
-	float leng1 = point2point(line1);
-	float leng2 = point2point(line2);
-	return ((line1[2] - line1[0]) * (line2[2] - line2[0]) + (line1[3] - line1[1]) * (line2[3] - line2[1])) / leng1 / leng2;
-}
 
 
 // 计算坐标旋转后的点，这里输入的坐标是标准坐标系，输出的也是标准坐标系
@@ -983,7 +1105,8 @@ int main__()
 
 	// mser检测
 	std::vector<cv::Rect> candidates;
-	candidates = mser(image_1);
+	vector<RotatedRect> rrects;
+	candidates = mser(image_1, rrects);
 	for (int i = 0; i < candidates.size(); ++i)
 	{
 		rectangle(image_1, candidates[i], Scalar(255, 255, 255), 1);	
@@ -1121,7 +1244,149 @@ bool SortByEllipseArea(Ellipse &e1, Ellipse &e2)//注意：本函数的参数的类型一定要
 	//降序排列  
 	return (e1._a*e1._b) > (e2._a*e2._b);
 }
+
+
+
+// 筛选椭圆的工作放到这里来，最后一行参数是输出。
+void getGoodElls(vector<Ellipse>& ellsYaed, float& el_ab_p, Mat& resultImage, 
+	int& scaleSize, Mat& gray_clone2, Ptr<LineSegmentDetector>& ls, Vec2f& e_center, float& dis2e_center, int& min_vec_num,
+	Ellipse& el_dst, Mat& roi_dst, vector<Vec4f>& tLines, Mat& bl_drawLines)
+{
+
+	if (ellsYaed.size() == 0) { return; }
+	// 先按照面积大小排序这些椭圆
+	// 然后再从大的找起，寻找满足一定要求的椭圆
+	sort(ellsYaed.begin(), ellsYaed.end(), SortByEllipseArea);
+
+	int index = 0;
+	while (index < ellsYaed.size()) {
+		
+		Ellipse& e = ellsYaed[index];
+		index += 1;
+		int g = cvRound(e._score * 255.f);
+		Scalar color(0, g, 0);
+		// 找到长轴短轴
+		int long_a = e._a >= e._b ? cvRound(e._a) : cvRound(e._b);
+		int short_b = e._a < e._b ? cvRound(e._a) : cvRound(e._b);
+
+		// 如果长宽比过小则舍去
+		cout << "比例是：" << short_b / (float)long_a << endl;
+		if (short_b / (float)long_a < el_ab_p) { continue; }
+
+		rectangle(resultImage, Rect(cvRound(e._xc) - long_a, cvRound(e._yc) - long_a, 2 * long_a, 2 * long_a), color, 1);
+
+		// 找到在原图中的位置，然后先进行直方图均衡化最后再lsd
+		// 这里由于精度问题，会出现 e._xc 略小于 long_a，或者矩形的范围超出了图片原来尺寸
+		int r_x = max(0, (cvRound(e._xc) - long_a)) * scaleSize;
+		int r_y = max(0, (cvRound(e._yc) - long_a)) * scaleSize;
+		// 超出尺寸的话就适当缩小
+		int r_mx = min(gray_clone2.cols, r_x + 2 * long_a * scaleSize);
+		int r_my = min(gray_clone2.rows, r_y + 2 * long_a * scaleSize);
+		int n_width = min(r_mx - r_x, r_my - r_y);
+		Mat1b roi = gray_clone2(Rect(r_x, r_y, n_width, n_width));
+		Mat1b roi_2;
+		resize(roi, roi_2, Size(400, cvRound(float(roi.cols) / float(roi.rows) * 400)));
+		// 同时也放缩一下椭圆
+		float scaleFactor = float(400) / 2 / long_a;
+		// 上面求区域的时候实际上就规定了最后在 400 x 400 的图里面椭圆中心就是(200, 200)
+		e._xc = 200;
+		e._yc = 200;
+		e._a = e._a * scaleFactor;
+		e._b = e._b * scaleFactor;
+
+		Mat1b roi_3 = roi_2.clone();
+		// imwrite("D:\\VcProject\\biaopan\\data\\test\\2\\aa1.jpg", roi_2);
+		equalizeHist(roi_2, roi_2);
+		Mat1b roi_2_add = roi_2.clone();
+		// imwrite("D:\\VcProject\\biaopan\\data\\test\\2\\aa2.jpg", roi_2);
+
+		// 运行LSD算法检测直线
+		// 实验发现用自动阈值比canny更好得到刻度线，这里的 9=3*3模板，25=5*5模板，这里也发现 ADAPTIVE_THRESH_MEAN_C 比 ADAPTIVE_THRESH_GAUSSIAN_C的更容易检测到直线
+		//adaptiveThreshold(roi_2, roi_2, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 9, 0);
+
+
+		adaptiveThreshold(roi_2_add, roi_2_add, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 25, 0);
+		threshold(roi_2, roi_2, 0, 255, CV_THRESH_OTSU);
+		imshow("thresh_result_1", roi_2);
+		imshow("thresh_result_2", roi_2_add);
+		// 但是实际上，对于表盘应用，上面两个相减会得到并集的效果
+		imshow("thresh_result_3", roi_2_add - roi_2);
+		waitKey(0);
+
+
+		// gray_clone, gray_edge, 3, 9, 3
+		// Canny(roi_2, roi_2, 3, 9, 3); // Apply canny edge//可选canny算子
+
+
+		vector<Vec4f> lines_std;
+		vector<Vec4f> lines_dst;
+
+		// Detect the lines
+		ls->detect(roi_2_add - roi_2, lines_std);
+		// Show found lines
+		Mat drawnLines = roi_3.clone();
+
+
+
+		cout << "lines_std.size() : " << lines_std.size() << endl;
+
+		for (int j = 0; j < lines_std.size(); j++)
+		{
+			// 筛选掉那些距离中心比较远的线
+			float distance = point2Line(e_center, lines_std[j]);
+			if (distance <= dis2e_center)
+			{
+				Vec4f l = lines_std[j];
+				// 还要分头尾两点
+				Vec4f dl;
+				if (point2point(l[0], l[1], e_center[0], e_center[1]) >= point2point(l[2], l[3], e_center[0], e_center[1]))
+				{
+					dl = Vec4f(l[2], l[3], l[0], l[1]);
+				}
+				else
+				{
+					dl = l;
+				}
+				lines_dst.push_back(dl);
+				// 画出尾点
+				circle(drawnLines, Point(dl[2], dl[3]), 2, color, -1);
+			}
+		}
+		circle(drawnLines, Point(200, 200), 4, color, -1);
+
+		// 画出所有朝向中点的线
+		ls->drawSegments(drawnLines, lines_dst);
+		cout << "size: " << lines_dst.size() << endl;
+
+
+
+		
+
+
+		// 从里面选出 可能支持点 超过 35 的，一旦找到了就不需要再继续找了，因为前面已经确保这是足够大的椭圆了（按照面积排序过了）
+
+		if (lines_dst.size() >= min_vec_num)
+		{
+			min_vec_num = lines_dst.size();
+			el_dst = e;
+			roi_dst = roi_3;
+			tLines = lines_dst;
+			bl_drawLines = drawnLines;
+			break;
+		}
+
+		//imshow("drawnLines", drawnLines);
+		imshow("Yaed", resultImage);
+		cout << "index : " << index << endl;
+		waitKey();
+	}
+}
+
+
 /* ------------------------------------ */
+
+
+
 
 
 
@@ -1268,8 +1533,8 @@ int main()
 	// 1 85是重要因素
 
 
-	string picName = "2 21.jpg";
-	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\2\\" + picName);
+	string picName = "1 22.jpg";
+	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\1\\" + picName);
 
 	//string picName = "16 43.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
@@ -1279,7 +1544,7 @@ int main()
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\12\\" + picName);
 	//string picName = "013.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\imgs\\013.jpg");
-	int scaleSize = 2;
+	int scaleSize = 5;
 	for (const auto& image_name : names)
 	{
 		//string name = image_name.substr(image_name.find_last_of("\\") + 1);
@@ -1288,9 +1553,11 @@ int main()
 		Mat3b image_1 = imread(image_name);
 
 		// 对图片进行压缩
-		resize(image_1, image_1, Size(image_1.size[1] / 2.5, image_1.size[0] / 2.5));
+		//resize(image_1, image_1, Size(image_1.size[1] / 2.5, image_1.size[0] / 2.5));
 		//resize(image_1, image_1, Size(image_1.size[1] / 8, image_1.size[0] / 8));
-
+		blur(image_1, image_1, Size(7, 7));
+		imshow("blur_image", image_1);
+		waitKey();
 		// 给图片添加噪声
 		//image_1 = addGaussianNoise(image_1);
 
@@ -1381,16 +1648,51 @@ int main()
 		
 		Mat3b resultImage = image.clone();
 		yaed.DrawDetectedEllipses(resultImage, ellsYaed);
+		
 		cout << "detect ells number : " << ellsYaed.size() << endl;
+		imshow("resultImage", resultImage);
+		waitKey();
 
+
+
+		// 开展搜索范围，以长轴为直径的正方形区域
+		
+		Mat1b gray_clone2;
+		cvtColor(image_1, gray_clone2, CV_BGR2GRAY);
+
+		// 选取至少有 35 个可能支持点的椭圆
+		int min_vec_num = 25;
+		// 存储目标椭圆
+		Ellipse el_dst;
+		// 存储目标区域
+		Mat1b roi_zero = Mat::zeros(400, 400, CV_8UC1);
+		Mat1b& roi_dst = roi_zero;
+		// 存储目标的可能支持线
+		vector<Vec4f> tLines;
+		// 允许直线距离e_center的距离
+		float dis2e_center = 30;
+		// 允许椭圆的最小长宽比
+		float el_ab_p = 0.75;
+
+		Ptr<LineSegmentDetector> ls = createLineSegmentDetector(LSD_REFINE_STD);
+		Mat bl_drawLines;
+		Vec2f e_center = Vec2f(200, 200);
+
+		getGoodElls(ellsYaed, el_ab_p, resultImage,scaleSize, gray_clone2, ls, e_center, dis2e_center, min_vec_num,
+			el_dst, roi_dst, tLines, bl_drawLines);
 
 		// 如果上面的canny算子获取不到椭圆就用下面的方法获取
-		if (ellsYaed.size() <= 1)
-		{	
+		if (ellsYaed.size() == 0 || tLines.size() == 0)
+		{
 			adaptiveThreshold(gray_clone_add, gray_clone_add, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 9, 0);
 			imshow("gray_clone", gray_clone_add);
 			waitKey();
 			yaed.Detect(gray_clone_add, ellsYaed);
+			yaed.DrawDetectedEllipses(resultImage, ellsYaed);
+			imshow("resultImage", resultImage);
+			waitKey();
+			getGoodElls(ellsYaed, el_ab_p, resultImage, scaleSize, gray_clone2, ls, e_center, dis2e_center, min_vec_num,
+				el_dst, roi_dst, tLines, bl_drawLines);
 		}
 
 		if (ellsYaed.size() == 0)
@@ -1401,152 +1703,8 @@ int main()
 			return 0;
 		}
 
-		// 开展搜索范围，以长轴为直径的正方形区域
-		int index = 0;
-		Mat1b gray_clone2;
-		cvtColor(image_1, gray_clone2, CV_BGR2GRAY);
-		namedWindow("roi");
-		int el_size = ellsYaed.size();
-
-		// 选取至少有 35 个可能支持点的椭圆
-		int min_vec_num = 25;
-		// 存储目标椭圆
-		Ellipse& el_dst = ellsYaed[0];
-		// 存储目标区域
-		Mat1b roi_zero = Mat::zeros(400, 400, CV_8UC1);
-		Mat1b& roi_dst = roi_zero;
-		// 存储目标的可能支持线
-		vector<Vec4f> tLines;
-		// 允许直线距离e_center的距离
-		float dis2e_center = 20.0;
-
-
-		Ptr<LineSegmentDetector> ls = createLineSegmentDetector(LSD_REFINE_STD);
-		Mat bl_drawLines;
-		Vec2f e_center = Vec2f(200, 200);
-
-
-		// 先按照面积大小排序这些椭圆
-		// 然后再从大的找起，寻找满足一定要求的椭圆
-		sort(ellsYaed.begin(), ellsYaed.end(), SortByEllipseArea);
-
-
-		while(index < el_size ) {
-			Ellipse& e = ellsYaed[index];
-			int g = cvRound(e._score * 255.f);
-			Scalar color(0, g, 0);
-			// 找到长轴
-			int long_a = e._a >= e._b ? cvRound(e._a) : cvRound(e._b);
-			rectangle(resultImage, Rect(cvRound(e._xc)-long_a, cvRound(e._yc)-long_a, 2 * long_a, 2 * long_a), color, 1);
-
-			// 找到在原图中的位置，然后先进行直方图均衡化最后再lsd
-			// 这里由于精度问题，会出现 e._xc 略小于 long_a，或者矩形的范围超出了图片原来尺寸
-			int r_x = max(0, (cvRound(e._xc) - long_a)) * scaleSize;
-			int r_y = max(0, (cvRound(e._yc) - long_a)) * scaleSize;
-			// 超出尺寸的话就适当缩小
-			int r_mx = min(gray_clone2.cols, r_x + 2 * long_a * scaleSize);
-			int r_my = min(gray_clone2.rows, r_y + 2 * long_a * scaleSize);
-			int n_width = min(r_mx - r_x, r_my - r_y);
-			Mat1b roi = gray_clone2(Rect(r_x, r_y, n_width, n_width));
-			Mat1b roi_2;
-			resize(roi, roi_2, Size(400, cvRound(float(roi.cols) / float(roi.rows) * 400)));
-			// 同时也放缩一下椭圆
-			float scaleFactor = float(400) / 2 / long_a;
-			// 上面求区域的时候实际上就规定了最后在 400 x 400 的图里面椭圆中心就是(200, 200)
-			e._xc = 200;
-			e._yc = 200;
-			e._a = e._a * scaleFactor;
-			e._b = e._b * scaleFactor;
-
-			Mat1b roi_3 = roi_2.clone();
-			// imwrite("D:\\VcProject\\biaopan\\data\\test\\2\\aa1.jpg", roi_2);
-			equalizeHist(roi_2, roi_2);
-			Mat1b roi_2_add = roi_2.clone();
-			// imwrite("D:\\VcProject\\biaopan\\data\\test\\2\\aa2.jpg", roi_2);
-
-			// 运行LSD算法检测直线
-			// 实验发现用自动阈值比canny更好得到刻度线，这里的 9=3*3模板，25=5*5模板，这里也发现 ADAPTIVE_THRESH_MEAN_C 比 ADAPTIVE_THRESH_GAUSSIAN_C的更容易检测到直线
-			//adaptiveThreshold(roi_2, roi_2, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 9, 0);
-
-
-			adaptiveThreshold(roi_2_add, roi_2_add, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 25, 0);
-			threshold(roi_2, roi_2, 0, 255, CV_THRESH_OTSU);
-			imshow("thresh_result_1", roi_2);
-			imshow("thresh_result_2", roi_2_add);
-			// 但是实际上，对于表盘应用，上面两个相减会得到并集的效果
-			imshow("thresh_result_3", roi_2_add - roi_2);
-			waitKey(0);
-
-
-			// gray_clone, gray_edge, 3, 9, 3
-			// Canny(roi_2, roi_2, 3, 9, 3); // Apply canny edge//可选canny算子
-
-			
-			vector<Vec4f> lines_std;
-			vector<Vec4f> lines_dst;
-
-			// Detect the lines
-			ls->detect(roi_2_add - roi_2, lines_std);
-			// Show found lines
-			Mat drawnLines = roi_3.clone();
-			
-
-			
-			cout << "lines_std.size() : " << lines_std.size() << endl;
-
-			for (int j=0;j<lines_std.size();j++) 
-			{
-				// 筛选掉那些距离中心比较远的线
-				float distance = point2Line(e_center, lines_std[j]);
-				if (distance <= dis2e_center)
-				{
-					Vec4f l = lines_std[j];
-					// 还要分头尾两点
-					Vec4f dl;
-					if (point2point(l[0], l[1], e_center[0], e_center[1]) >= point2point(l[2], l[3], e_center[0], e_center[1]))
-					{
-						dl = Vec4f(l[2], l[3], l[0], l[1]);
-					}
-					else 
-					{
-						dl = l;
-					}
-					lines_dst.push_back(dl);
-					// 画出尾点
-					circle(drawnLines, Point(dl[2], dl[3]), 2, color, -1);
-				}
-			}
-			circle(drawnLines, Point(200, 200), 4, color, -1);
-
-			// 画出所有朝向中点的线
-			ls->drawSegments(drawnLines, lines_dst);
-			cout << "size: " << lines_dst.size() << endl;
-
-			
-			
-			index += 1;
-
-
-			// 从里面选出 可能支持点 超过 35 的，一旦找到了就不需要再继续找了，因为前面已经确保这是足够大的椭圆了（按照面积排序过了）
-			
-			if (lines_dst.size() >= min_vec_num)
-			{
-				min_vec_num = lines_dst.size();
-				el_dst = e;
-				roi_dst = roi_3;
-				tLines = lines_dst;
-				bl_drawLines = drawnLines;
-				break;
-			}
-
-			//imshow("drawnLines", drawnLines);
-			imshow("Yaed", resultImage);
-			cout << "index : " << index << endl;
-			waitKey();
-		}
-
-
-		//imwrite(out_folder + name + ".png", resultImage);
+		
+		// 这里显示的是最好的那个椭圆的画线
 		imshow("drawnLines", bl_drawLines);
 
 
@@ -1563,33 +1721,48 @@ int main()
 
 		// 下面测试用 自动阈值 来mser，经过试验发现，这个方法切割比直接mser好
 		Mat roi_thresh = roi_dst.clone();
+		Mat roi_thresh_otsu = roi_dst.clone();
 		Mat roi_thresh_mser = roi_dst.clone();
 		// 实验证明 ADAPTIVE_THRESH_GAUSSIAN_C 比 ADAPTIVE_THRESH_MEAN_C 分割的更好，边缘更加光滑
 		adaptiveThreshold(roi_thresh, roi_thresh, 255, ADAPTIVE_THRESH_GAUSSIAN_C, CV_THRESH_BINARY_INV, 25, 0);
 		//erode(roi_thresh, roi_thresh, Mat(2, 2, CV_8U), Point(0, 0), 1);
 		//medianBlur(roi_thresh, roi_thresh, 3);
 
-		//获取自定义核
-		Mat e_element = getStructuringElement(MORPH_ELLIPSE, Size(1, 1)); //第一个参数MORPH_RECT表示矩形的卷积核，当然还可以选择椭圆形的、交叉型的
-		// Mat d_element = getStructuringElement(MORPH_ELLIPSE, Size(2, 2)); //第一个参数MORPH_RECT表示矩形的卷积核，当然还可以选择椭圆形的、交叉型的
 
-		//腐蚀操作
-		erode(roi_thresh, roi_thresh, e_element);
-		//dilate(roi_thresh, roi_thresh, d_element);
-		//erode(roi_thresh, roi_thresh, element);
+		//threshold(roi_thresh_otsu, roi_thresh_otsu, 0, 255, CV_THRESH_OTSU);
+		//roi_thresh = roi_thresh - roi_thresh_otsu;
+
+		//获取自定义核
+		Mat e_element = getStructuringElement(MORPH_ELLIPSE, Size(4, 4)); //第一个参数MORPH_RECT表示矩形的卷积核，当然还可以选择椭圆形的、交叉型的
+		// Mat d_element = getStructuringElement(MORPH_ELLIPSE, Size(2, 2)); //第一个参数MORPH_RECT表示矩形的卷积核，当然还可以选择椭圆形的、交叉型的
+		// 膨胀把所有的数字都抠出来
+		//dilate(roi_thresh, roi_thresh, e_element);
+
+		imshow("roi_thresh", roi_thresh);
+		waitKey(0);
+
+		
+		//erode(roi_thresh, roi_thresh, e_element);
+		//dilate(roi_thresh, roi_thresh, e_element);
+		// 开操作
+		//morphologyEx(roi_thresh, roi_thresh, MORPH_OPEN, e_element);
+
 
 		// 下面尝试腐蚀多次，得出我们想要的指针的直线，而不是通过之前的步骤做到
 		Mat d_element = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
 		Mat line_roi;
 		vector<Vec4f> tLines2;
 		vector<Vec4f> tLines1;
+
 		erode(roi_thresh, line_roi, d_element);
+
 		erode(line_roi, line_roi, d_element);
 		erode(line_roi, line_roi, d_element);
 		ls->detect(line_roi, tLines1);
-		//ls->drawSegments(roi_line, tLines1);
-		imshow("line_roi11", line_roi);
+		ls->drawSegments(roi_line, tLines1);
 		imshow("roi_line11", roi_line);
+		imshow("line_roi11", line_roi);
+		
 		// 给他区分尾点和非尾点
 		for (int j = 0; j < tLines1.size(); j++)
 		{
@@ -1613,19 +1786,18 @@ int main()
 			}
 		}
 		ls->drawSegments(roi_line, tLines2);
+		imshow("roi_line11", roi_line);
 		waitKey(0);
 
-		imshow("roi_thresh", roi_thresh);
-		waitKey(0);
-		
 
-		vector<Rect> ccs = mser(roi_thresh);
+		//存储里面的旋转矩阵。
+		vector<RotatedRect> rrects;
+		vector<Rect> ccs = mser(roi_dst, rrects);
 		for (int cci=0;cci < ccs.size();cci++) 
 		{
-			// 先筛选掉拟合圆外面的点，和下面的mser步骤一样
-
 			rectangle(roi_thresh_mser, ccs[cci], Scalar(255,255,255), 1);
 			// 然后再把矩形框往外框一点，就能把所有数字区域都得到了
+
 		}
 		imshow("roi_thresh_mser", roi_thresh_mser);
 		waitKey(0);
@@ -1639,7 +1811,7 @@ int main()
 		/**
 			中心是(200, 200)，在这个中心以一定半径搜索精准的圆心
 		**/
-		int searchRadius = 25;
+		int searchRadius = 35;
 		vector<Vec3f> circles;
 		Mat1b centerArea = roi_dst(Rect(200 - searchRadius, 200 - searchRadius, 2 * searchRadius, 2 * searchRadius)).clone();
 		Mat1b centerArea2 = centerArea.clone();
@@ -2022,6 +2194,18 @@ int main()
 		vector<Point> numberAreaCenters;
 
 
+		// 投票选择哪个角度才是正确的（只有内圈的mser才能投票），投票数多的就是表盘旋转的角度，然后复原旋转前的样子进行分割后再判别。
+		// 允许相同角度之间的差值
+		int rect_angle_err = 5;
+		// 把属于同一个角度的都加起来，最后要计算他的平均值。
+		unordered_map<int, int> rect_angle_sums;
+		unordered_map<int, int> rect_angle_nums;
+		// 抽出他的迭代器
+		unordered_map<int, int>::iterator  rect_iter;
+		unordered_map<int, int>::iterator  rect_sums_iter;
+		
+		// 存储符合条件的那些矩形的index
+		vector<int> ris;
 		// 区域显示
 		for (int i = 0; i < candidates.size(); ++i)
 		{
@@ -2032,8 +2216,33 @@ int main()
 			// 这里的椭圆需要往内部缩一下，去除过多的咋点，比如刻度线
 			if (ndistance >= 0.86) { continue; }
 
+			ris.push_back(i);
+
 			// 先把所有的都标出来
-			rectangle(roi_mser, candidates[i], Scalar(0, 0, 0), 1);
+			rectangle(roi_mser, candidates[i], Scalar(255, 255, 255), 1);
+			drawRotatedRect(roi_mser, rrects[i]);
+
+			// 统计投票
+			int rrect_angle = rrects[i].angle;
+			bool is_new_r_angle = true;
+			for (rect_iter = rect_angle_nums.begin(); rect_iter != rect_angle_nums.end(); rect_iter++)
+			{
+				// 与存在的angle进行比较，如果相差不大，就放进那个angle里面
+				// iter->first是key，iter->second是value
+				int compare_angle = rect_iter->first;
+				if (abs(rrect_angle - compare_angle) <= rect_angle_err)
+				{
+					is_new_r_angle = false;
+					rect_angle_nums[compare_angle] = rect_iter->second + 1;
+					rect_angle_sums[compare_angle] += rrect_angle;
+					break;
+				}
+			}
+			if (is_new_r_angle) { rect_angle_nums[rrect_angle] = 1; rect_angle_sums[rrect_angle] = 0; }
+			
+
+
+
 			// 把符合数字的区域框选出来
 			Mat mser_item = roi_dst(candidates[i]);
 
@@ -2067,9 +2276,46 @@ int main()
 		imshow("roi_mser", roi_mser);
 		waitKey(0);
 
-		RotatedRect box = fitEllipse(numberAreaCenters);
-		ellipse(roi_mser, box, Scalar(255, 255, 255), 1, CV_AA);
-		ellipse(roi_mser, Point(cvRound(el_dst._xc), cvRound(el_dst._yc)), Size(cvRound(el_dst._a), cvRound(el_dst._b)), el_dst._rad*180.0 / CV_PI, 0.0, 360.0, color, 2);
+
+		int max_rect_angle = 0;
+		int max_rect_angle_nums = 0;
+		// 找出票数最多的旋转角度，然后复原旋转图像，分割数字，识别
+		for (rect_iter = rect_angle_nums.begin(); rect_iter != rect_angle_nums.end(); rect_iter++)
+		{
+			if (rect_iter->second > max_rect_angle_nums)
+			{
+				max_rect_angle_nums = rect_iter->second;
+				max_rect_angle = rect_iter->first;
+			}
+		}
+
+		for (rect_sums_iter = rect_angle_sums.begin(); rect_sums_iter != rect_angle_sums.end(); rect_sums_iter++)
+		{
+			if (rect_sums_iter->first == max_rect_angle)
+			{
+				// rect_sums_iter->second拿到的是投票最多的角度的和
+				max_rect_angle = rect_sums_iter->second;
+				break;
+			}
+		}
+		max_rect_angle = max_rect_angle / max_rect_angle_nums;
+
+		Mat roi_dst_clone_ = roi_dst.clone();
+		// 画出按照最大角变化的所有旋转矩形
+		for (int ri = 0;ri < ris.size();ri++)
+		{
+			int ix = ris[ri];
+			RotatedRect rrect = rrects[ix];
+			rrect.angle = max_rect_angle;
+			drawRotatedRect(roi_dst_clone_, rrect);
+		}
+		imshow("roi_dst_clone_", roi_dst_clone_);
+		waitKey();
+
+
+		//RotatedRect box = fitEllipse(numberAreaCenters);
+		//ellipse(roi_mser, box, Scalar(255, 255, 255), 1, CV_AA);
+		//ellipse(roi_mser, Point(cvRound(el_dst._xc), cvRound(el_dst._yc)), Size(cvRound(el_dst._a), cvRound(el_dst._b)), el_dst._rad*180.0 / CV_PI, 0.0, 360.0, color, 2);
 
 		//imwrite("D:\\VcProject\\biaopan\\data\\temp\\1\\" + picName, roi_mser);
 		imshow("roi_mser", roi_mser);
@@ -2094,6 +2340,9 @@ int main()
 		// 规定融合的最短距离
 		float merge_distance = 30;
 		float min_merge_distance = 10;
+		// 允许与angle 的误差
+		int angle_error = 12;
+		int max_likely_angle = -1;
 		// 按照一定步进慢慢缩小 merge_distance
 		float merge_distance_scale_step = 3;
 		// 记录连接情况的表，这是个二维数组
@@ -2105,9 +2354,7 @@ int main()
 		// 抽出他的迭代器
 		unordered_map<int, int>::iterator  iter;
 
-		// 允许与angle 的误差
-		int angle_error = 8;
-		int max_likely_angle = -1;
+
 		
 		// 最终决定多大比例的线是要占最多的
 		float max_portion = 0.5;
@@ -2317,6 +2564,7 @@ int main()
 		// 判断是否奇异点的那个阈值，是一个比例值,这里稍微处理下，如果点比较密集的话，可以放松这个限制
 		float singular_thresh = 0.5;
 		if (merge_areas.size() >= 8) { singular_thresh = 0.35; }
+		if (merge_areas.size() <= 5) { singular_thresh = 0.6; dis_error = 0.04; }
 
 
 		// 先对merge_areas按照响应值进行排序，响应值大的排前面
@@ -2375,6 +2623,14 @@ int main()
 			cout << "满足的响应值为： " << merge_areas[kii].response << endl;
 			merges_1.push_back(merge_areas[kii]);
 		}
+
+
+		if (merges_1.size()==0) 
+		{
+			cout << "!!!!!!!!!!检测角度存在问题，请调整新角度继续检测!!!!!!!!!!!" << endl;
+			continue;
+		}
+
 
 		// 按照角度给所有mergeArea排序
 		sort(merges_1.begin(), merges_1.end(), SortByAngle);
@@ -2471,6 +2727,7 @@ int train()
 	vector<string> raws = readTxt(labelPath);
 	// 存储每张图片的特征向量以及label
 	vector<vector<float>> trainingData;
+
 	vector<int> labels;
 	// 字符串的分割标识
 	const string spliter = "===";
@@ -2482,6 +2739,8 @@ int train()
 		string src = raw[0];
 		int label = str2int(raw[1]);
 		Mat mat = imread(src, IMREAD_GRAYSCALE);
+		// 稍微给点模糊
+		blur(mat, mat, Size(3, 3));
 		trainingData.push_back(getHogData(mat));
 		labels.push_back(label);
 		// 这里做数据增强，比如镜像，翻转（原因是可能会出现这些情况）
@@ -2974,7 +3233,8 @@ void writeImg(string imgReadPath, string dirPath, bool if_flip = false)
 
 
 	// mser检测
-	std::vector<cv::Rect> candidates = mser(roi_thresh);
+	vector<RotatedRect> rrects;
+	std::vector<cv::Rect> candidates = mser(roi_thresh, rrects);
 
 	int file_index = 0;
 	for (int i = 0; i < candidates.size(); ++i)
