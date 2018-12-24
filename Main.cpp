@@ -711,7 +711,10 @@ void drawRotatedRect(Mat& drawer, RotatedRect& rrect)
 	//逐条边绘制
 	for (int j = 0; j < 4; j++)
 	{
-		cv::line(drawer, vertices[j], vertices[(j + 1) % 4], cv::Scalar(0, 255, 0));
+		// 画出他的四个点的边角，黑色是p[3]，白色是p[1]
+		circle(drawer, vertices[0], 2, Scalar(225, 225, 225), -1);
+		circle(drawer, vertices[3], 2, Scalar(0, 0, 0), -1);
+		cv::line(drawer, vertices[j], vertices[(j + 1) % 4], cv::Scalar(0, 0, 0));
 	}
 }
 
@@ -766,7 +769,7 @@ std::vector<cv::Rect> mser(cv::Mat srcImage, vector<cv::RotatedRect>& rrects)
 		// 不符合尺寸条件判断
 		if (b_size < 800 && b_size > 50)
 		{
-			// 实验证明，往外扩张的时候识别效果更好
+			// 实验证明，往外扩张的时候识别效果更好，
 			br = Rect(br.x - 3, br.y - 3, br.width + 6, br.height + 6);
 			keeps.push_back(br);
 		}
@@ -1533,8 +1536,8 @@ int main()
 	// 1 85是重要因素
 
 
-	string picName = "1 22.jpg";
-	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\1\\" + picName);
+	string picName = "4 54.jpg";
+	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\4\\" + picName);
 
 	//string picName = "16 43.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
@@ -2200,9 +2203,12 @@ int main()
 		// 把属于同一个角度的都加起来，最后要计算他的平均值。
 		unordered_map<int, int> rect_angle_sums;
 		unordered_map<int, int> rect_angle_nums;
+		// 存储每个角度对应的那些旋转矩形的id
+		unordered_map<int, vector<int>> rect_goal_ixs;
 		// 抽出他的迭代器
 		unordered_map<int, int>::iterator  rect_iter;
 		unordered_map<int, int>::iterator  rect_sums_iter;
+		unordered_map<int, int>::iterator  rect_goal_ixs_iter;
 		
 		// 存储符合条件的那些矩形的index
 		vector<int> ris;
@@ -2221,6 +2227,9 @@ int main()
 			// 先把所有的都标出来
 			rectangle(roi_mser, candidates[i], Scalar(255, 255, 255), 1);
 			drawRotatedRect(roi_mser, rrects[i]);
+			cout << "w=" << candidates[i].width << ",h=" << candidates[i].height << ",w-h=" << candidates[i].width - candidates[i].height << endl;
+			//cout << "角度为： " << rrects[i].angle << endl;
+
 
 			// 统计投票
 			int rrect_angle = rrects[i].angle;
@@ -2235,10 +2244,17 @@ int main()
 					is_new_r_angle = false;
 					rect_angle_nums[compare_angle] = rect_iter->second + 1;
 					rect_angle_sums[compare_angle] += rrect_angle;
+					rect_goal_ixs[compare_angle].push_back(i);
 					break;
 				}
 			}
-			if (is_new_r_angle) { rect_angle_nums[rrect_angle] = 1; rect_angle_sums[rrect_angle] = 0; }
+			if (is_new_r_angle) 
+			{ 
+				rect_angle_nums[rrect_angle] = 1; 
+				rect_angle_sums[rrect_angle] = 0; 
+				vector<int> emptyv;
+				rect_goal_ixs[rrect_angle] = emptyv;
+			}
 			
 
 
@@ -2267,9 +2283,9 @@ int main()
 				// 这里需要修改，只是方便测试
 				// if (response == 3) { response = 2; }
 
-				cout << "标签为： " << response << endl;
-				imshow("roi_mser", roi_mser);
-				waitKey(0);
+				//cout << "标签为： " << response << endl;
+				//imshow("roi_mser", roi_mser);
+				//waitKey(0);
 			}
 		}
 
@@ -2279,6 +2295,7 @@ int main()
 
 		int max_rect_angle = 0;
 		int max_rect_angle_nums = 0;
+		int max_rect_angle_sum = 0;
 		// 找出票数最多的旋转角度，然后复原旋转图像，分割数字，识别
 		for (rect_iter = rect_angle_nums.begin(); rect_iter != rect_angle_nums.end(); rect_iter++)
 		{
@@ -2294,11 +2311,68 @@ int main()
 			if (rect_sums_iter->first == max_rect_angle)
 			{
 				// rect_sums_iter->second拿到的是投票最多的角度的和
-				max_rect_angle = rect_sums_iter->second;
+				max_rect_angle = rect_sums_iter->first;
+				max_rect_angle_sum = rect_sums_iter->second;
 				break;
 			}
 		}
-		max_rect_angle = max_rect_angle / max_rect_angle_nums;
+		
+
+		// 下面判断这个矩形是向右转还是向左转
+		// 假设这个矩形处于0度旋转，如果在0度时他的长宽比和他的外围长宽比并不是一致，说明侧边和底边与正常方向理解是反过来的。
+		// 如果旋转矩形的旋转边是侧边，那么说明矩形往右倾，如果旋转边是底边，说明矩形往左倾。
+		// 通过统计长宽比一致情况，来确保是哪种方向
+		vector<int> rids = rect_goal_ixs[max_rect_angle];
+		int is_same_num = 0;
+		for (int ri = 0; ri < rids.size(); ri++)
+		{
+			int ix = rids[ri];
+			RotatedRect rrect = rrects[ix];
+
+			// 获取旋转矩形的四个顶点
+			cv::Point2f* vertices = new cv::Point2f[4];
+			rrect.points(vertices);
+			// 上面的边长应该是 p[0]与p[3]的距离，侧面的边长应该是p[1]与p[0]的距离
+			float rw = point2point(vertices[0], vertices[3]);
+			float rh = point2point(vertices[0], vertices[1]);
+
+			float is_same_shape = (candidates[ix].width - candidates[ix].height) * (rw - rh);
+			if (is_same_shape >= 0) { is_same_num++; }
+		}
+
+		// 最后这个旋转角要平均一下，但是发现不平均的话效果更好
+		//max_rect_angle = max_rect_angle_sum / max_rect_angle_nums;
+		// 构造旋转矩阵
+		
+		Mat rotationMatrix;
+		// 下面这个参数表明的是大多数的角度边到底应该是底边还是侧边
+		bool is_b_or_s = false;
+		float rangle = 0;
+		if (is_same_num / rids.size() >= 0.5) 
+		{
+			// 在getRotationMatrix2D中，角度为负，顺时针；角度为正，逆时针。第三个参数默认不用管
+			// 角度边（也就是p[0]~p[3]的那条边）是底边，说明往左倾
+			is_b_or_s = true;
+			rangle = -abs(max_rect_angle);
+			rotationMatrix = getRotationMatrix2D(Point(200, 200), rangle, 1);//计算旋转的仿射变换矩阵 
+		}
+		else 
+		{
+			// 角度边（也就是p[0]~p[3]的那条边）是侧边，说明往右倾
+			is_b_or_s = false;
+			rangle = (90 - abs(max_rect_angle));
+			rotationMatrix = getRotationMatrix2D(Point(200, 200), rangle, 1);//计算旋转的仿射变换矩阵 
+		}
+		Mat rMat;
+		warpAffine(roi_dst, rMat, rotationMatrix, Size(roi_dst.cols, roi_dst.rows));//仿射变换  
+		imshow("rMat", rMat);
+		waitKey(0);
+
+
+
+		// 上面只是发现旋转角而已，下面就是在roi_dst中的每个小mser窗口中进行旋转，旋转中心是旋转矩形的中心。
+		// 然后再进行数字分割，然后再交给识别器去识别数字。
+
 
 		Mat roi_dst_clone_ = roi_dst.clone();
 		// 画出按照最大角变化的所有旋转矩形
@@ -2306,18 +2380,93 @@ int main()
 		{
 			int ix = ris[ri];
 			RotatedRect rrect = rrects[ix];
-			rrect.angle = max_rect_angle;
+			Rect rect = candidates[ix];
+			Point rect_center = Point(rect.x + rect.width / 2, rect.y + rect.height / 2);
+			// 实验发现把中心换成 mser出来的矩形的中心，中心更准确，同时扩张一下范围
+			rrect.center = rect_center;
+			rrect.size = Size(rrect.size.width + 4, rrect.size.height + 4);
+			// 获取旋转矩形的四个顶点
+			cv::Point2f* vertices = new cv::Point2f[4];
+			rrect.points(vertices);
+			// 上面的边长应该是 p[0]与p[3]的距离，侧面的边长应该是p[1]与p[0]的距离
+			int rw = point2point(vertices[0], vertices[3]);
+			int rh = point2point(vertices[0], vertices[1]);
+			int temp_ = 0;
+			float is_same_shape = (candidates[ix].width - candidates[ix].height) * (rw - rh);
+
+			// 他的角度边是底边
+			if (is_same_shape >= 0) 
+			{
+				// 与实际角度边一致
+				if (is_b_or_s) { rrect.angle = max_rect_angle; }
+				// 实际应该是侧边作为角度边才对
+				else { rrect.angle = 270 - abs(max_rect_angle); }
+			}
+			else 
+				// 角度边是侧边
+			{ 
+				// 与实际角度边一致
+				if (!is_b_or_s) { rrect.angle = max_rect_angle; }
+				// 实际应该是底边作为角度边才对
+				else { rrect.angle = 90 + abs(max_rect_angle); }
+				// 角度边是侧边，因此，他的rw实际上是h，rh实际上是w
+				temp_ = rw; rw = rh; rh = temp_;
+			}
+
+			
 			drawRotatedRect(roi_dst_clone_, rrect);
+
+			cout << "rrect.angle = " << rrect.angle << endl;
+			// 下面单独提取这些旋转矩阵区域
+			// 先把区域放大到足够大，两倍于原来图像，然后围绕中心旋转，之后再提取roi
+			Mat scaleMat = roi_dst(Rect(rrect.center.x - rect.width, rrect.center.y - rect.height, 2 * rect.width, 2 * rect.height));
+			// 在放大的区域中，中心是 Point(rect.width, rect.height)
+			rotationMatrix = getRotationMatrix2D(Point(rect.width, rect.height), rangle, 1);//计算旋转的仿射变换矩阵 
+			Mat scaleMat2;
+			warpAffine(scaleMat, scaleMat2, rotationMatrix, Size(scaleMat.rows, scaleMat.cols));//仿射变换  
+			// 提取目标区域
+			int x = max(0, rect.width - rw / 2);
+			int y = max(0, rect.height - rh / 2);
+			int width = min(scaleMat2.cols - x, rw);
+			int height = min(scaleMat2.rows - y, rh);
+			Rect roi_area = Rect(x, y, width, height);
+			Mat final_mser_roi = scaleMat2(roi_area);
+			imshow("mmmser", final_mser_roi);
+			waitKey();
 		}
 		imshow("roi_dst_clone_", roi_dst_clone_);
 		waitKey();
 
 
-		//RotatedRect box = fitEllipse(numberAreaCenters);
-		//ellipse(roi_mser, box, Scalar(255, 255, 255), 1, CV_AA);
-		//ellipse(roi_mser, Point(cvRound(el_dst._xc), cvRound(el_dst._yc)), Size(cvRound(el_dst._a), cvRound(el_dst._b)), el_dst._rad*180.0 / CV_PI, 0.0, 360.0, color, 2);
 
-		//imwrite("D:\\VcProject\\biaopan\\data\\temp\\1\\" + picName, roi_mser);
+		for (int ri = 0; ri < ris.size(); ri++)
+		{
+			int ix = ris[ri];
+			RotatedRect rrect = rrects[ix];
+			Rect rect = candidates[ix];
+			Point rect_center = Point(rect.width / 2, rect.height / 2);
+			rotationMatrix = getRotationMatrix2D(rect_center, rangle, 1);
+			Mat roi_rect = roi_dst(rect);
+			Mat mser_r;
+
+			// 获取旋转矩形的四个顶点
+			cv::Point2f* vertices = new cv::Point2f[4];
+			rrect.points(vertices);
+			// 上面的边长应该是 p[0]与p[3]的距离，侧面的边长应该是p[1]与p[0]的距离
+			int rw = point2point(vertices[0], vertices[3]);
+			int rh = point2point(vertices[0], vertices[1]);
+
+			float is_same_shape = (candidates[ix].width - candidates[ix].height) * (rw - rh);
+
+			warpAffine(roi_rect, mser_r, rotationMatrix, Size(roi_rect.rows, roi_rect.cols));//仿射变换  
+
+
+
+			imshow("mmmser", mser_r);
+			waitKey(0);
+		}
+
+
 		imshow("roi_mser", roi_mser);
 		waitKey(0);
 
