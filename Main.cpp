@@ -834,6 +834,100 @@ std::vector<cv::Rect> mser(cv::Mat srcImage, vector<cv::RotatedRect>& rrects)
 
 
 
+// 存储上轮廓值以及坐标
+struct upper
+{
+	// 存储其x值
+	int x;
+	// 存储其y值
+	int y;
+
+};
+
+// vector<int>根据vector中的值来排序
+bool SortByUp(upper &v1, upper &v2)
+{
+	//降序排列  
+	return v1.y > v2.y;
+}
+
+// 寻找上轮廓
+void vertical_projection(Mat input_src, vector<upper>& uppers)
+{
+
+	int width = input_src.cols;
+	int height = input_src.rows;
+	int perPixelValue;//每个像素的值
+	// 初始化
+	vector<int> projectValArry(width, 0);
+	
+	// 平滑参数
+	int smooth_thresh = 4;
+
+	// 寻找上轮廓，
+	// last存储上一列的值，比如当前列与前一列相差过大（比如当前列为空）的，
+	// 那么先继续向下探索符合条件的点，如果还是没探索到，那么去看一看前一列，保持和前一列一样，这样是保证函数不会突然断开
+	int last = 0;
+	for (int col = 0; col < width; ++col)
+	{
+		projectValArry[col] = last;
+		for (int row = 0; row < height; ++row)
+		{
+			perPixelValue = input_src.at<uchar>(row, col);
+			if (perPixelValue > 0 && abs(row - last) <= smooth_thresh)
+			{
+				projectValArry[col] = row; 
+				break;
+			}
+		}
+		last = projectValArry[col];
+	}
+
+	// 前面的那些0需要被平滑掉
+	for (int col = 0; col < width; ++col)
+	{
+		if (projectValArry[col] > 0) 
+		{
+			for (int i = 0; i < col; ++i)
+			{
+				projectValArry[i] = projectValArry[col];
+			}
+			break;
+		}
+	}
+
+
+	/*新建一个Mat用于储存投影直方图并将背景置为白色*/
+	Mat verticalProjectionMat(height, width, CV_8UC1);
+	for (int i = 0; i < height; i++)
+	{
+		for (int j = 0; j < width; j++)
+		{
+			perPixelValue = 255;  //背景设置为白色。   
+			verticalProjectionMat.at<uchar>(i, j) = perPixelValue;
+		}
+	}
+
+	/*将直方图的曲线设为黑色*/
+	cout << "projectValArry: [";
+	for (int i = 0; i < width; i++)
+	{
+		perPixelValue = 0;  //直方图设置为黑色  
+		verticalProjectionMat.at<uchar>(projectValArry[i], i) = perPixelValue;
+		cout << projectValArry[i] << ",";
+
+		// 装进uppers里面返回
+		uppers.push_back(upper{i, projectValArry[i]});
+	}
+	cout << "]" << endl;
+	imshow("【上轮廓】", verticalProjectionMat);
+	
+	
+}
+
+
+
+
 
 string int2str(const int &int_temp)
 {
@@ -1183,7 +1277,7 @@ void joinSearch(vector<bool>& isVisited, vector<int>& goal_set, vector<vector<in
 struct SingleArea
 {
 	// 存储响应值
-	float response;
+	vector<float> response;
 	// 存储里面的candidates的序号
 	int cc_index;
 	// 存储中心
@@ -1235,6 +1329,8 @@ bool SortByRes(MergeArea &v1, MergeArea &v2)//注意：本函数的参数的类型一定要与ve
 	//降序排列  
 	return v1.response > v2.response;
 }
+
+
 
 /* ------------------------------------ */
 
@@ -1536,8 +1632,8 @@ int main()
 	// 1 85是重要因素
 
 
-	string picName = "4 54.jpg";
-	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\4\\" + picName);
+	string picName = "1 54.jpg";
+	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\1\\" + picName);
 
 	//string picName = "16 43.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
@@ -1720,7 +1816,7 @@ int main()
 		Mat roi_line = roi_dst.clone();
 		Mat roi_mser = roi_dst.clone();
 		Mat roi_merge = roi_dst.clone();
-
+		Mat roi_mser_2 = roi_dst.clone();
 
 		// 下面测试用 自动阈值 来mser，经过试验发现，这个方法切割比直接mser好
 		Mat roi_thresh = roi_dst.clone();
@@ -2212,7 +2308,7 @@ int main()
 		
 		// 存储符合条件的那些矩形的index
 		vector<int> ris;
-		// 区域显示
+		// 这里只是把符合条件的candidate给挑选出来，给后面操作
 		for (int i = 0; i < candidates.size(); ++i)
 		{
 			// 先筛选掉拟合圆外面的点
@@ -2255,38 +2351,6 @@ int main()
 				vector<int> emptyv;
 				rect_goal_ixs[rrect_angle] = emptyv;
 			}
-			
-
-
-
-			// 把符合数字的区域框选出来
-			Mat mser_item = roi_dst(candidates[i]);
-
-
-
-			vector<float> v = getHogData(mser_item);
-			Mat testData(1, 144, CV_32FC1, v.data());
-			int response = svm->predict(testData);
-
-			// 如果发现是黏连的，就用腐蚀把他分割然后弄出来
-
-
-			// 显示出来
-			if (response >= 0)
-			{
-				rectangle(roi_mser, candidates[i], Scalar(255, 255, 255), 2);
-				circle(roi_mser, ncenter, 2, color, -1);
-
-				// 为了之后的运算
-				sas.push_back({ float(response), i, ncenter });
-				numberAreaCenters.push_back(ncenter);
-				// 这里需要修改，只是方便测试
-				// if (response == 3) { response = 2; }
-
-				//cout << "标签为： " << response << endl;
-				//imshow("roi_mser", roi_mser);
-				//waitKey(0);
-			}
 		}
 
 		imshow("roi_mser", roi_mser);
@@ -2326,6 +2390,7 @@ int main()
 		int is_same_num = 0;
 		for (int ri = 0; ri < rids.size(); ri++)
 		{
+			// ix是符合位置要求的mser区域的candidate序号
 			int ix = rids[ri];
 			RotatedRect rrect = rrects[ix];
 
@@ -2373,11 +2438,14 @@ int main()
 		// 上面只是发现旋转角而已，下面就是在roi_dst中的每个小mser窗口中进行旋转，旋转中心是旋转矩形的中心。
 		// 然后再进行数字分割，然后再交给识别器去识别数字。
 
+		// 存储矫正后的mser
+		vector<Mat> mser_rois;
 
 		Mat roi_dst_clone_ = roi_dst.clone();
 		// 画出按照最大角变化的所有旋转矩形
 		for (int ri = 0;ri < ris.size();ri++)
 		{
+			// ix是符合位置要求的mser区域的candidate序号
 			int ix = ris[ri];
 			RotatedRect rrect = rrects[ix];
 			Rect rect = candidates[ix];
@@ -2415,57 +2483,184 @@ int main()
 
 			
 			drawRotatedRect(roi_dst_clone_, rrect);
-
+			imshow("roi_dst_clone_", roi_dst_clone_);
+			waitKey();
 			cout << "rrect.angle = " << rrect.angle << endl;
 			// 下面单独提取这些旋转矩阵区域
 			// 先把区域放大到足够大，两倍于原来图像，然后围绕中心旋转，之后再提取roi
 			Mat scaleMat = roi_dst(Rect(rrect.center.x - rect.width, rrect.center.y - rect.height, 2 * rect.width, 2 * rect.height));
-			// 在放大的区域中，中心是 Point(rect.width, rect.height)
+			// 在放大的区域中，中心是 Point(rect.width, rect.height)，1是缩放因子
 			rotationMatrix = getRotationMatrix2D(Point(rect.width, rect.height), rangle, 1);//计算旋转的仿射变换矩阵 
 			Mat scaleMat2;
-			warpAffine(scaleMat, scaleMat2, rotationMatrix, Size(scaleMat.rows, scaleMat.cols));//仿射变换  
+			warpAffine(scaleMat, scaleMat2, rotationMatrix, Size(scaleMat.cols, scaleMat.rows));//仿射变换  
+
 			// 提取目标区域
 			int x = max(0, rect.width - rw / 2);
 			int y = max(0, rect.height - rh / 2);
 			int width = min(scaleMat2.cols - x, rw);
 			int height = min(scaleMat2.rows - y, rh);
 			Rect roi_area = Rect(x, y, width, height);
+
+			//circle(scaleMat2, Point(x + rw / 2, y + rh / 2), 2, color, -1);
+			//circle(scaleMat, Point(rrect.center.x, rrect.center.y), 2, color, -1);
+			//rectangle(scaleMat2, roi_area, Scalar(0, 0, 0), 1);
+			//imshow("scaleMat", scaleMat);
+			//imshow("scaleMat2", scaleMat2);
+			//waitKey();
+
 			Mat final_mser_roi = scaleMat2(roi_area);
-			imshow("mmmser", final_mser_roi);
+			mser_rois.push_back(final_mser_roi);
+
+			// otsu提取文字，然后开操作去除杂点，最后是分割识别
+			Mat mser_roi_thresh;
+			threshold(final_mser_roi, mser_roi_thresh, 0, 255, CV_THRESH_OTSU);
+			mser_roi_thresh = 255 - mser_roi_thresh;
+			Mat e_element = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
+			// 开操作去除杂点
+			morphologyEx(mser_roi_thresh, mser_roi_thresh, MORPH_OPEN, e_element);
+			// 前面把rect放大了一点，现在缩回来统计他的宽高比
+			float wihi = (mser_roi_thresh.cols - 4) / (float)(mser_roi_thresh.rows - 4);
+			cout << "宽高比：" << wihi << endl;
+
+			// 上轮廓分析
+			imshow("mmmser", mser_roi_thresh);
+			imshow("mmmser2", final_mser_roi);
+			vector<upper> uppers;
+			vertical_projection(mser_roi_thresh, uppers);
+			
+			// 具体寻找多少个分割线，根据比例而定，当然也可以完全交给下面的算法自动寻找，下面的算法寻找到所有的分割点后要去头尾两个多余的分割部分
+			// 先对所有的值进行从大到小进行排序，然后从头开始遍历，寻找某个点，他的7邻域是个凸曲线(因为寻找上轮廓过程中保证了函数是连续的，所以不会有奇值点)
+			vector<upper> uppers_sort;
+			for (int ei = 0; ei < uppers.size(); ei++) { uppers_sort.push_back(uppers[ei]); }
+			// 显示上轮廓
 			waitKey();
+			sort(uppers_sort.begin(), uppers_sort.end(), SortByUp);
+			// 存储切割点，anchors存放的是分割点的序号，并不是坐标和值
+			vector<int> anchors;
+
+			int usize = uppers.size();
+
+			if (wihi < 0.6) { usize = 0; }
+
+			cout << "分割size为：" << usize << ", 分割点为： [";
+			for (int ei = 0; ei < uppers_sort.size(); ei++)
+			{
+				// 领域空间分为两边走，往左往右走，寻找导数小于0的两个点，如果找的到那么这个点就是极小值点
+				int uindex = uppers_sort[ei].x;
+				int res = uppers_sort[ei].y;
+				bool left_all_small = true;
+				int left_gradient = 2;
+				bool right_all_small = true;
+				int right_gradient = 2;
+				for (int lindex = uindex-1; lindex >= 0; lindex--)
+				{
+					if ((uppers[lindex].y - uppers[lindex + 1].y) < 0) { left_gradient--; if (left_gradient == 0) break; }
+					if ((uppers[lindex].y - uppers[lindex + 1].y) > 0) { left_all_small = false; break; }
+
+				}
+				for (int rindex = uindex + 1; rindex < usize; rindex++)
+				{
+					if ((uppers[rindex].y - uppers[rindex - 1].y) < 0) { right_gradient--; if (right_gradient == 0) break; }
+					if ((uppers[rindex].y - uppers[rindex - 1].y) > 0) { right_all_small = false; break; }
+				}
+
+				if (left_all_small && right_all_small && (left_gradient==0) && (right_gradient==0)) { anchors.push_back(uindex); cout << uindex << ","; }
+			}
+			cout << "]";
+
+			vector<float> responses;
+			bool is_singular = false;
+
+			if (anchors.size() > 0)
+			{
+				// 整理一次分割点，分割点过近的当做一个分割点，true_anchors存放的是分割点的坐标
+				int close_thresh = 6;
+				vector<int> true_anchors;
+				vector<int> max_xs;
+				vector<int> min_xs;
+				true_anchors.push_back(0);
+				int pp = 0;
+				int longth = 0;
+				// 整理分割点，把相近的分割点合为一个分割点（合后的分割点在中间）
+				for (int ei = 0; ei < anchors.size(); ei++)
+				{
+					// 要防止过分割
+					int ax = uppers[anchors[ei]].x;
+					if (ax - true_anchors[pp] > close_thresh) 
+					{
+						true_anchors.push_back(ax); pp++;
+						max_xs.push_back(ax); min_xs.push_back(ax);
+					}
+					else 
+					{
+						if (ax > max_xs[pp - 1]) { max_xs[pp - 1] = ax; }
+						if (ax < min_xs[pp - 1]) { min_xs[pp - 1] = ax; }
+					}
+				}
+				for (int ei=1; ei < true_anchors.size();ei++)
+				{
+					true_anchors[ei] = min_xs[pp - 1] + (max_xs[pp - 1] - min_xs[pp - 1]) / 2;
+				}
+				true_anchors.push_back(width);
+				cout << endl;
+				// 按照上面的分割点分割区域然后识别，最后合在一起
+				// 注意上面给anchor添加了图片的两个端点
+
+				
+				for (int ei = 0; ei < true_anchors.size()-1; ei++)
+				{
+					//Mat mmser = final_mser_roi.colRange(max(0, true_anchors[ei]-1), min(true_anchors[ei + 1]+1, width));
+					Mat mmser = final_mser_roi.colRange(max(0, true_anchors[ei]), min(true_anchors[ei + 1], width));
+					vector<float> v = getHogData(mmser);
+					Mat testData(1, 144, CV_32FC1, v.data());
+					int response = svm->predict(testData);
+					imshow("[分割后的小图]", mmser);
+					waitKey();
+					// response = -1表示这个不是数字，response = 10表示这个数字是融合数字
+					if (response < 0 || response == 10) { is_singular = true; break; }
+					else { responses.push_back(response); }
+
+				}
+			}
+
+			else 
+			{
+				// 直接预测
+				vector<float> v = getHogData(final_mser_roi);
+				Mat testData(1, 144, CV_32FC1, v.data());
+				int response = svm->predict(testData);
+				// response = -1表示这个不是数字，response = 10表示这个数字是融合数字
+				if (response < 0 || response == 10) { is_singular = true; }
+				else { responses.push_back(response); }
+			}
+
+
+			if (is_singular) { cout << "is_singular: true" << endl; }
+			else 
+			{
+				cout << "merge_response: ";
+				for (int ei = 0; ei < responses.size(); ei++)
+				{
+					cout << responses[ei];
+				}
+				cout << endl;
+
+				// 存放到singleArea中让后面继续融合
+				Point ncenter = Point(candidates[ix].x + candidates[ix].width / 2, candidates[ix].y + candidates[ix].height / 2);
+				rectangle(roi_mser_2, candidates[ix], Scalar(255, 255, 255), 2);
+				circle(roi_mser_2, ncenter, 2, color, -1);
+				imshow("roi_mser_2", roi_mser_2);
+				waitKey(0);
+
+				// 为了之后的运算
+				sas.push_back({ responses, ix, ncenter });
+				numberAreaCenters.push_back(ncenter);
+			}
 		}
+
+
+
 		imshow("roi_dst_clone_", roi_dst_clone_);
-		waitKey();
-
-
-
-		for (int ri = 0; ri < ris.size(); ri++)
-		{
-			int ix = ris[ri];
-			RotatedRect rrect = rrects[ix];
-			Rect rect = candidates[ix];
-			Point rect_center = Point(rect.width / 2, rect.height / 2);
-			rotationMatrix = getRotationMatrix2D(rect_center, rangle, 1);
-			Mat roi_rect = roi_dst(rect);
-			Mat mser_r;
-
-			// 获取旋转矩形的四个顶点
-			cv::Point2f* vertices = new cv::Point2f[4];
-			rrect.points(vertices);
-			// 上面的边长应该是 p[0]与p[3]的距离，侧面的边长应该是p[1]与p[0]的距离
-			int rw = point2point(vertices[0], vertices[3]);
-			int rh = point2point(vertices[0], vertices[1]);
-
-			float is_same_shape = (candidates[ix].width - candidates[ix].height) * (rw - rh);
-
-			warpAffine(roi_rect, mser_r, rotationMatrix, Size(roi_rect.rows, roi_rect.cols));//仿射变换  
-
-
-
-			imshow("mmmser", mser_r);
-			waitKey(0);
-		}
-
 
 		imshow("roi_mser", roi_mser);
 		waitKey(0);
@@ -2484,8 +2679,7 @@ int main()
 
 		
 
-		// 中间辅助的容器
-		vector<MergeArea> mas;
+
 		// 规定融合的最短距离
 		float merge_distance = 30;
 		float min_merge_distance = 10;
@@ -2556,13 +2750,7 @@ int main()
 					// 根据阈值把点变成边。
 					for (int kii = 0; kii < sas.size(); kii++)
 					{
-						float response = sas[kii].response;
-						// 要么直接把属于融合的那个类10直接渲染成 merge_area 输出，要么就把他当做和单个区域一样的东西
-						if (response > 9)
-						{
-							//csets.push_back();
-							//continue;
-						}
+						
 						Point sacenter = sas[kii].center;
 						// 寻找能融合的那个点，也就是距离他中心最短的那个点
 						float min_dd = merge_distance;
@@ -2570,7 +2758,7 @@ int main()
 						for (int kjj = 0; kjj < sas.size(); kjj++)
 						{
 							// 这里需要查看kjj是否已经连接过kii，已经连过的就跳过(-1表示未连接，-2表示自己连自己)
-							if (joinTable[kii][kjj] ==-2 || joinTable[kii][kjj] > -1 || sas[kjj].response > 9) { continue; }
+							if (joinTable[kii][kjj] ==-2 || joinTable[kii][kjj] > -1 ) { continue; }
 							float jj_ii_distance = point2point(sacenter, sas[kjj].center);
 							if (min_dd > jj_ii_distance) { min_dd = jj_ii_distance; target_sa = kjj; }
 						}
@@ -2674,9 +2862,20 @@ int main()
 			// 按照x对goal_set_areas排序，并得出他的总response
 			sort(goal_set_areas.begin(), goal_set_areas.end(), SortByX);
 			float merge_response = 0;
+			// 这里的 merge_response 和前面不同，因为前面的singleArea中含有一些已经融合的，应该先判断singleArea是多少位的。然后根据这个去求新的 merge_response
+			vector<float> responses;
 			for (int kjj = 0; kjj < goal_set_size; kjj++)
 			{
-				merge_response += goal_set_areas[kjj].response * pow(10, -kjj);
+				vector<float> mres = goal_set_areas[kjj].response;
+				for (int kjjj = 0; kjjj < mres.size(); kjjj++)
+				{
+					responses.push_back(mres[kjjj]);
+				}		
+			}
+			for (int kjj = 0; kjj < responses.size(); kjj++)
+			{
+				// 按照某种规则计算这个response
+				merge_response += responses[kjj] * pow(10, -kjj);
 			}
 
 			// 计算与三四象限分割线的轴的夹角并 渲染成 merge_area
