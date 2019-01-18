@@ -727,6 +727,9 @@ std::vector<cv::Rect> mser(cv::Mat srcImage, vector<cv::RotatedRect>& rrects)
 	// 创建MSER对象
 	cv::Ptr<cv::MSER> mesr1 = cv::MSER::create(2, 5, 800, 0.5, 0.3);
 
+	// 限定长宽高
+	int max_width = srcImage.cols;
+	int max_height = srcImage.rows;
 
 	std::vector<cv::Rect> boxes;
 	// MSER检测
@@ -770,6 +773,10 @@ std::vector<cv::Rect> mser(cv::Mat srcImage, vector<cv::RotatedRect>& rrects)
 		if (b_size < 800 && b_size > 50)
 		{
 			// 实验证明，往外扩张的时候识别效果更好，
+			int topx = max(0, br.x - 3);
+			int topy = max(0, br.y - 3);
+			int maxw = min(br.width + 6, max_width - topx);
+			int maxh = min(br.height + 6, max_height - topy);
 			br = Rect(br.x - 3, br.y - 3, br.width + 6, br.height + 6);
 			keeps.push_back(br);
 		}
@@ -833,6 +840,24 @@ std::vector<cv::Rect> mser(cv::Mat srcImage, vector<cv::RotatedRect>& rrects)
 
 
 
+// 存储旋转矩形角的信息（投票信息）
+struct ranglevoter 
+{
+	// 有多少票
+	int voteNum;
+	// 这些投票的角度加起来是多少（用来给后面平均的）
+	int sum;
+	// 这个角度是多少
+	int rangle;
+};
+
+// vector<ranglevoter>根据ranglevoter中的voteNum排序
+bool SortByVote(ranglevoter &v1, ranglevoter &v2)
+{
+	//降序排列  
+	return v1.voteNum > v2.voteNum;
+}
+
 
 // 存储上轮廓值以及坐标
 struct upper
@@ -843,6 +868,15 @@ struct upper
 	int y;
 
 };
+
+// 存储极值点（一个极值点不仅包含中心点，还有其左右边界（山谷的左右两个边界））
+struct extremer
+{
+	upper center;
+	int lindex;
+	int rindex;
+};
+
 
 // vector<int>根据vector中的值来排序
 bool SortByUp(upper &v1, upper &v2)
@@ -1632,8 +1666,13 @@ int main()
 	// 1 85是重要因素
 
 
-	string picName = "1 54.jpg";
-	names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\1\\" + picName);
+	//string picName = "2 11.jpg";
+	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\2\\" + picName);
+
+
+	string picName = "14 36.jpg";
+	names.push_back("D:\\VcProject\\biaopan\\data\\test\\14\\" + picName);
+
 
 	//string picName = "16 43.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\16\\" + picName);
@@ -1643,7 +1682,7 @@ int main()
 	//names.push_back("D:\\VcProject\\biaopan\\data\\raw\\newData\\images\\newData\\12\\" + picName);
 	//string picName = "013.jpg";
 	//names.push_back("D:\\VcProject\\biaopan\\imgs\\013.jpg");
-	int scaleSize = 5;
+	int scaleSize = 8;
 	for (const auto& image_name : names)
 	{
 		//string name = image_name.substr(image_name.find_last_of("\\") + 1);
@@ -1654,7 +1693,7 @@ int main()
 		// 对图片进行压缩
 		//resize(image_1, image_1, Size(image_1.size[1] / 2.5, image_1.size[0] / 2.5));
 		//resize(image_1, image_1, Size(image_1.size[1] / 8, image_1.size[0] / 8));
-		blur(image_1, image_1, Size(7, 7));
+		//blur(image_1, image_1, Size(7, 7));
 		imshow("blur_image", image_1);
 		waitKey();
 		// 给图片添加噪声
@@ -2316,9 +2355,16 @@ int main()
 			Point newsc = origin2el(bestEl.center, bestEl.angle / (float)180 * pi, ncenter);
 			float ndistance = sqrt(pow(newsc.x, 2) / pow(bestEl.size.width / 2, 2) + pow(newsc.y, 2) / pow(bestEl.size.height / 2, 2));
 			// 这里的椭圆需要往内部缩一下，去除过多的咋点，比如刻度线
-			if (ndistance >= 0.86) { continue; }
+			// 同时又不能太里面，因为数字是在中心一定距离外的。
+			//if (ndistance >= 0.86 || ndistance < 0.4) { continue; }
+
+			// 如果内接矩形很小（可以认为不存在），那么就直接去掉，避免被误识别
+			double big_area = candidates[i].width * candidates[i].height * 0.2;
+			if (rrects[i].size.height * rrects[i].size.width < min(big_area, 20.0)) { continue; }
 
 			ris.push_back(i);
+
+
 
 			// 先把所有的都标出来
 			rectangle(roi_mser, candidates[i], Scalar(255, 255, 255), 1);
@@ -2349,6 +2395,7 @@ int main()
 				rect_angle_nums[rrect_angle] = 1; 
 				rect_angle_sums[rrect_angle] = 0; 
 				vector<int> emptyv;
+				emptyv.push_back(i);
 				rect_goal_ixs[rrect_angle] = emptyv;
 			}
 		}
@@ -2357,313 +2404,380 @@ int main()
 		waitKey(0);
 
 
-		int max_rect_angle = 0;
-		int max_rect_angle_nums = 0;
-		int max_rect_angle_sum = 0;
-		// 找出票数最多的旋转角度，然后复原旋转图像，分割数字，识别
+		// 这里把这些角度信息都放到一个vector中，然后按照票数排序，依照票数由高到低进行检测值,如果过关且大于0的值比较多
+		// 那么就说明角度取对了，如果数量过少，说明角度取错了，依次往下取
+		vector<ranglevoter> ranglevoters;
+		rect_sums_iter = rect_angle_sums.begin();
 		for (rect_iter = rect_angle_nums.begin(); rect_iter != rect_angle_nums.end(); rect_iter++)
 		{
-			if (rect_iter->second > max_rect_angle_nums)
+			ranglevoters.push_back({ rect_iter->second ,rect_sums_iter->second, rect_iter->first });
+			rect_sums_iter++;
+		}
+		// 根据投票数排序
+		sort(ranglevoters.begin(), ranglevoters.end(), SortByVote);
+
+
+		// 照票数由高到低进行检测值,如果过关且大于0的值比较多，那么就说明角度取对了，如果数量过少，说明角度取错了，依次往下取
+		for (int kii=0;kii<ranglevoters.size();kii++)
+		{
+			int max_rect_angle = ranglevoters[kii].rangle;
+			// 下面判断这个矩形是向右转还是向左转
+			// 假设这个矩形处于0度旋转，如果在0度时他的长宽比和他的外围长宽比并不是一致，说明侧边和底边与正常方向理解是反过来的。
+			// 如果旋转矩形的旋转边是侧边，那么说明矩形往右倾，如果旋转边是底边，说明矩形往左倾。
+			// 通过统计长宽比一致情况，来确保是哪种方向
+			vector<int> rids = rect_goal_ixs[max_rect_angle];
+			int is_same_num = 0;
+			for (int ri = 0; ri < rids.size(); ri++)
 			{
-				max_rect_angle_nums = rect_iter->second;
-				max_rect_angle = rect_iter->first;
-			}
-		}
+				// ix是符合位置要求的mser区域的candidate序号
+				int ix = rids[ri];
+				RotatedRect rrect = rrects[ix];
 
-		for (rect_sums_iter = rect_angle_sums.begin(); rect_sums_iter != rect_angle_sums.end(); rect_sums_iter++)
-		{
-			if (rect_sums_iter->first == max_rect_angle)
-			{
-				// rect_sums_iter->second拿到的是投票最多的角度的和
-				max_rect_angle = rect_sums_iter->first;
-				max_rect_angle_sum = rect_sums_iter->second;
-				break;
-			}
-		}
-		
+				// 获取旋转矩形的四个顶点
+				cv::Point2f* vertices = new cv::Point2f[4];
+				rrect.points(vertices);
+				// 上面的边长应该是 p[0]与p[3]的距离，侧面的边长应该是p[1]与p[0]的距离
+				float rw = point2point(vertices[0], vertices[3]);
+				float rh = point2point(vertices[0], vertices[1]);
 
-		// 下面判断这个矩形是向右转还是向左转
-		// 假设这个矩形处于0度旋转，如果在0度时他的长宽比和他的外围长宽比并不是一致，说明侧边和底边与正常方向理解是反过来的。
-		// 如果旋转矩形的旋转边是侧边，那么说明矩形往右倾，如果旋转边是底边，说明矩形往左倾。
-		// 通过统计长宽比一致情况，来确保是哪种方向
-		vector<int> rids = rect_goal_ixs[max_rect_angle];
-		int is_same_num = 0;
-		for (int ri = 0; ri < rids.size(); ri++)
-		{
-			// ix是符合位置要求的mser区域的candidate序号
-			int ix = rids[ri];
-			RotatedRect rrect = rrects[ix];
-
-			// 获取旋转矩形的四个顶点
-			cv::Point2f* vertices = new cv::Point2f[4];
-			rrect.points(vertices);
-			// 上面的边长应该是 p[0]与p[3]的距离，侧面的边长应该是p[1]与p[0]的距离
-			float rw = point2point(vertices[0], vertices[3]);
-			float rh = point2point(vertices[0], vertices[1]);
-
-			float is_same_shape = (candidates[ix].width - candidates[ix].height) * (rw - rh);
-			if (is_same_shape >= 0) { is_same_num++; }
-		}
-
-		// 最后这个旋转角要平均一下，但是发现不平均的话效果更好
-		//max_rect_angle = max_rect_angle_sum / max_rect_angle_nums;
-		// 构造旋转矩阵
-		
-		Mat rotationMatrix;
-		// 下面这个参数表明的是大多数的角度边到底应该是底边还是侧边
-		bool is_b_or_s = false;
-		float rangle = 0;
-		if (is_same_num / rids.size() >= 0.5) 
-		{
-			// 在getRotationMatrix2D中，角度为负，顺时针；角度为正，逆时针。第三个参数默认不用管
-			// 角度边（也就是p[0]~p[3]的那条边）是底边，说明往左倾
-			is_b_or_s = true;
-			rangle = -abs(max_rect_angle);
-			rotationMatrix = getRotationMatrix2D(Point(200, 200), rangle, 1);//计算旋转的仿射变换矩阵 
-		}
-		else 
-		{
-			// 角度边（也就是p[0]~p[3]的那条边）是侧边，说明往右倾
-			is_b_or_s = false;
-			rangle = (90 - abs(max_rect_angle));
-			rotationMatrix = getRotationMatrix2D(Point(200, 200), rangle, 1);//计算旋转的仿射变换矩阵 
-		}
-		Mat rMat;
-		warpAffine(roi_dst, rMat, rotationMatrix, Size(roi_dst.cols, roi_dst.rows));//仿射变换  
-		imshow("rMat", rMat);
-		waitKey(0);
-
-
-
-		// 上面只是发现旋转角而已，下面就是在roi_dst中的每个小mser窗口中进行旋转，旋转中心是旋转矩形的中心。
-		// 然后再进行数字分割，然后再交给识别器去识别数字。
-
-		// 存储矫正后的mser
-		vector<Mat> mser_rois;
-
-		Mat roi_dst_clone_ = roi_dst.clone();
-		// 画出按照最大角变化的所有旋转矩形
-		for (int ri = 0;ri < ris.size();ri++)
-		{
-			// ix是符合位置要求的mser区域的candidate序号
-			int ix = ris[ri];
-			RotatedRect rrect = rrects[ix];
-			Rect rect = candidates[ix];
-			Point rect_center = Point(rect.x + rect.width / 2, rect.y + rect.height / 2);
-			// 实验发现把中心换成 mser出来的矩形的中心，中心更准确，同时扩张一下范围
-			rrect.center = rect_center;
-			rrect.size = Size(rrect.size.width + 4, rrect.size.height + 4);
-			// 获取旋转矩形的四个顶点
-			cv::Point2f* vertices = new cv::Point2f[4];
-			rrect.points(vertices);
-			// 上面的边长应该是 p[0]与p[3]的距离，侧面的边长应该是p[1]与p[0]的距离
-			int rw = point2point(vertices[0], vertices[3]);
-			int rh = point2point(vertices[0], vertices[1]);
-			int temp_ = 0;
-			float is_same_shape = (candidates[ix].width - candidates[ix].height) * (rw - rh);
-
-			// 他的角度边是底边
-			if (is_same_shape >= 0) 
-			{
-				// 与实际角度边一致
-				if (is_b_or_s) { rrect.angle = max_rect_angle; }
-				// 实际应该是侧边作为角度边才对
-				else { rrect.angle = 270 - abs(max_rect_angle); }
-			}
-			else 
-				// 角度边是侧边
-			{ 
-				// 与实际角度边一致
-				if (!is_b_or_s) { rrect.angle = max_rect_angle; }
-				// 实际应该是底边作为角度边才对
-				else { rrect.angle = 90 + abs(max_rect_angle); }
-				// 角度边是侧边，因此，他的rw实际上是h，rh实际上是w
-				temp_ = rw; rw = rh; rh = temp_;
+				float is_same_shape = (candidates[ix].width - candidates[ix].height) * (rw - rh);
+				if (is_same_shape >= 0) { is_same_num++; }
 			}
 
-			
-			drawRotatedRect(roi_dst_clone_, rrect);
-			imshow("roi_dst_clone_", roi_dst_clone_);
-			waitKey();
-			cout << "rrect.angle = " << rrect.angle << endl;
-			// 下面单独提取这些旋转矩阵区域
-			// 先把区域放大到足够大，两倍于原来图像，然后围绕中心旋转，之后再提取roi
-			Mat scaleMat = roi_dst(Rect(rrect.center.x - rect.width, rrect.center.y - rect.height, 2 * rect.width, 2 * rect.height));
-			// 在放大的区域中，中心是 Point(rect.width, rect.height)，1是缩放因子
-			rotationMatrix = getRotationMatrix2D(Point(rect.width, rect.height), rangle, 1);//计算旋转的仿射变换矩阵 
-			Mat scaleMat2;
-			warpAffine(scaleMat, scaleMat2, rotationMatrix, Size(scaleMat.cols, scaleMat.rows));//仿射变换  
+			// 最后这个旋转角要平均一下，但是发现不平均的话效果更好
+			//max_rect_angle = max_rect_angle_sum / max_rect_angle_nums;
+			// 构造旋转矩阵
 
-			// 提取目标区域
-			int x = max(0, rect.width - rw / 2);
-			int y = max(0, rect.height - rh / 2);
-			int width = min(scaleMat2.cols - x, rw);
-			int height = min(scaleMat2.rows - y, rh);
-			Rect roi_area = Rect(x, y, width, height);
-
-			//circle(scaleMat2, Point(x + rw / 2, y + rh / 2), 2, color, -1);
-			//circle(scaleMat, Point(rrect.center.x, rrect.center.y), 2, color, -1);
-			//rectangle(scaleMat2, roi_area, Scalar(0, 0, 0), 1);
-			//imshow("scaleMat", scaleMat);
-			//imshow("scaleMat2", scaleMat2);
-			//waitKey();
-
-			Mat final_mser_roi = scaleMat2(roi_area);
-			mser_rois.push_back(final_mser_roi);
-
-			// otsu提取文字，然后开操作去除杂点，最后是分割识别
-			Mat mser_roi_thresh;
-			threshold(final_mser_roi, mser_roi_thresh, 0, 255, CV_THRESH_OTSU);
-			mser_roi_thresh = 255 - mser_roi_thresh;
-			Mat e_element = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
-			// 开操作去除杂点
-			morphologyEx(mser_roi_thresh, mser_roi_thresh, MORPH_OPEN, e_element);
-			// 前面把rect放大了一点，现在缩回来统计他的宽高比
-			float wihi = (mser_roi_thresh.cols - 4) / (float)(mser_roi_thresh.rows - 4);
-			cout << "宽高比：" << wihi << endl;
-
-			// 上轮廓分析
-			imshow("mmmser", mser_roi_thresh);
-			imshow("mmmser2", final_mser_roi);
-			vector<upper> uppers;
-			vertical_projection(mser_roi_thresh, uppers);
-			
-			// 具体寻找多少个分割线，根据比例而定，当然也可以完全交给下面的算法自动寻找，下面的算法寻找到所有的分割点后要去头尾两个多余的分割部分
-			// 先对所有的值进行从大到小进行排序，然后从头开始遍历，寻找某个点，他的7邻域是个凸曲线(因为寻找上轮廓过程中保证了函数是连续的，所以不会有奇值点)
-			vector<upper> uppers_sort;
-			for (int ei = 0; ei < uppers.size(); ei++) { uppers_sort.push_back(uppers[ei]); }
-			// 显示上轮廓
-			waitKey();
-			sort(uppers_sort.begin(), uppers_sort.end(), SortByUp);
-			// 存储切割点，anchors存放的是分割点的序号，并不是坐标和值
-			vector<int> anchors;
-
-			int usize = uppers.size();
-
-			if (wihi < 0.6) { usize = 0; }
-
-			cout << "分割size为：" << usize << ", 分割点为： [";
-			for (int ei = 0; ei < uppers_sort.size(); ei++)
+			Mat rotationMatrix;
+			// 下面这个参数表明的是大多数的角度边到底应该是底边还是侧边
+			bool is_b_or_s = false;
+			float rangle = 0;
+			if (is_same_num / rids.size() >= 0.5)
 			{
-				// 领域空间分为两边走，往左往右走，寻找导数小于0的两个点，如果找的到那么这个点就是极小值点
-				int uindex = uppers_sort[ei].x;
-				int res = uppers_sort[ei].y;
-				bool left_all_small = true;
-				int left_gradient = 2;
-				bool right_all_small = true;
-				int right_gradient = 2;
-				for (int lindex = uindex-1; lindex >= 0; lindex--)
+				// 在getRotationMatrix2D中，角度为负，顺时针；角度为正，逆时针。第三个参数默认不用管
+				// 角度边（也就是p[0]~p[3]的那条边）是底边，说明往左倾
+				is_b_or_s = true;
+				rangle = -abs(max_rect_angle);
+				rotationMatrix = getRotationMatrix2D(Point(200, 200), rangle, 1);//计算旋转的仿射变换矩阵 
+			}
+			else
+			{
+				// 角度边（也就是p[0]~p[3]的那条边）是侧边，说明往右倾
+				is_b_or_s = false;
+				rangle = (90 - abs(max_rect_angle));
+				rotationMatrix = getRotationMatrix2D(Point(200, 200), rangle, 1);//计算旋转的仿射变换矩阵 
+			}
+			Mat rMat;
+			warpAffine(roi_dst, rMat, rotationMatrix, Size(roi_dst.cols, roi_dst.rows));//仿射变换  
+			imshow("rMat", rMat);
+			waitKey(0);
+
+
+
+			// 上面只是发现旋转角而已，下面就是在roi_dst中的每个小mser窗口中进行旋转，旋转中心是旋转矩形的中心。
+			// 然后再进行数字分割，然后再交给识别器去识别数字。
+
+			// 存储矫正后的mser
+			vector<Mat> mser_rois;
+
+			Mat roi_dst_clone_ = roi_dst.clone();
+			// 画出按照最大角变化的所有旋转矩形
+			for (int ri = 0; ri < ris.size(); ri++)
+			{
+				// ix是符合位置要求的mser区域的candidate序号
+				int ix = ris[ri];
+				RotatedRect rrect = rrects[ix];
+				Rect rect = candidates[ix];
+				Point rect_center = Point(rect.x + rect.width / 2, rect.y + rect.height / 2);
+				// 实验发现把中心换成 mser出来的矩形的中心，中心更准确，同时扩张一下范围
+				rrect.center = rect_center;
+				rrect.size = Size(rrect.size.width + 4, rrect.size.height + 4);
+				// 获取旋转矩形的四个顶点
+				cv::Point2f* vertices = new cv::Point2f[4];
+				rrect.points(vertices);
+				// 上面的边长应该是 p[0]与p[3]的距离，侧面的边长应该是p[1]与p[0]的距离
+				int rw = point2point(vertices[0], vertices[3]);
+				int rh = point2point(vertices[0], vertices[1]);
+				int temp_ = 0;
+				float is_same_shape = (candidates[ix].width - candidates[ix].height) * (rw - rh);
+
+				// 他的角度边是底边
+				if (is_same_shape >= 0)
 				{
-					if ((uppers[lindex].y - uppers[lindex + 1].y) < 0) { left_gradient--; if (left_gradient == 0) break; }
-					if ((uppers[lindex].y - uppers[lindex + 1].y) > 0) { left_all_small = false; break; }
-
+					// 与实际角度边一致
+					if (is_b_or_s) { rrect.angle = max_rect_angle; }
+					// 实际应该是侧边作为角度边才对
+					else { rrect.angle = 270 - abs(max_rect_angle); }
 				}
-				for (int rindex = uindex + 1; rindex < usize; rindex++)
+				else
+					// 角度边是侧边
 				{
-					if ((uppers[rindex].y - uppers[rindex - 1].y) < 0) { right_gradient--; if (right_gradient == 0) break; }
-					if ((uppers[rindex].y - uppers[rindex - 1].y) > 0) { right_all_small = false; break; }
+					// 与实际角度边一致
+					if (!is_b_or_s) { rrect.angle = max_rect_angle; }
+					// 实际应该是底边作为角度边才对
+					else { rrect.angle = 90 + abs(max_rect_angle); }
+					// 角度边是侧边，因此，他的rw实际上是h，rh实际上是w
+					temp_ = rw; rw = rh; rh = temp_;
 				}
 
-				if (left_all_small && right_all_small && (left_gradient==0) && (right_gradient==0)) { anchors.push_back(uindex); cout << uindex << ","; }
-			}
-			cout << "]";
 
-			vector<float> responses;
-			bool is_singular = false;
+				drawRotatedRect(roi_dst_clone_, rrect);
+				imshow("roi_dst_clone_", roi_dst_clone_);
+				waitKey();
+				cout << "rrect.angle = " << rrect.angle << endl;
+				// 下面单独提取这些旋转矩阵区域
+				// 先把区域放大到足够大，两倍于原来图像，然后围绕中心旋转，之后再提取roi
+				int scale_mx = max(0, int(rrect.center.x - rect.width));
+				int scale_my = max(0, int(rrect.center.y - rect.height));
+				int scale_mw = min(2 * rect.width, roi_dst.cols - scale_mx);
+				int scale_mh = min(2 * rect.height, roi_dst.rows - scale_my);
 
-			if (anchors.size() > 0)
-			{
-				// 整理一次分割点，分割点过近的当做一个分割点，true_anchors存放的是分割点的坐标
-				int close_thresh = 6;
-				vector<int> true_anchors;
-				vector<int> max_xs;
-				vector<int> min_xs;
-				true_anchors.push_back(0);
-				int pp = 0;
-				int longth = 0;
-				// 整理分割点，把相近的分割点合为一个分割点（合后的分割点在中间）
-				for (int ei = 0; ei < anchors.size(); ei++)
+				Mat scaleMat = roi_dst(Rect(scale_mx, scale_my, scale_mw, scale_mh));
+				// 在放大的区域中，中心是 Point(rect.width, rect.height)，1是缩放因子
+				rotationMatrix = getRotationMatrix2D(Point(rect.width, rect.height), rangle, 1);//计算旋转的仿射变换矩阵 
+				Mat scaleMat2;
+				warpAffine(scaleMat, scaleMat2, rotationMatrix, Size(scaleMat.cols, scaleMat.rows));//仿射变换  
+
+				// 提取目标区域
+				int x = max(0, rect.width - rw / 2);
+				int y = max(0, rect.height - rh / 2);
+				int width = min(scaleMat2.cols - x, rw);
+				int height = min(scaleMat2.rows - y, rh);
+				Rect roi_area = Rect(x, y, width, height);
+
+				//circle(scaleMat2, Point(x + rw / 2, y + rh / 2), 2, color, -1);
+				//circle(scaleMat, Point(rrect.center.x, rrect.center.y), 2, color, -1);
+				//rectangle(scaleMat2, roi_area, Scalar(0, 0, 0), 1);
+				//imshow("scaleMat", scaleMat);
+				//imshow("scaleMat2", scaleMat2);
+				//waitKey();
+
+				Mat final_mser_roi = scaleMat2(roi_area);
+				mser_rois.push_back(final_mser_roi);
+
+				// otsu提取文字，然后开操作去除杂点，最后是分割识别
+				Mat mser_roi_thresh;
+				threshold(final_mser_roi, mser_roi_thresh, 0, 255, CV_THRESH_OTSU);
+				mser_roi_thresh = 255 - mser_roi_thresh;
+				Mat e_element = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
+				// 开操作去除杂点
+				morphologyEx(mser_roi_thresh, mser_roi_thresh, MORPH_OPEN, e_element);
+				// 前面把rect放大了一点，现在缩回来统计他的宽高比
+				float wihi = (mser_roi_thresh.cols - 4) / (float)(mser_roi_thresh.rows - 4);
+				cout << "宽高比：" << wihi << endl;
+
+				// 上轮廓分析
+				imshow("mmmser", mser_roi_thresh);
+				imshow("mmmser2", final_mser_roi);
+				vector<upper> uppers;
+				vertical_projection(mser_roi_thresh, uppers);
+
+				// 具体寻找多少个分割线，根据比例而定，当然也可以完全交给下面的算法自动寻找，下面的算法寻找到所有的分割点后要去头尾两个多余的分割部分
+				// 先对所有的值进行从大到小进行排序，然后从头开始遍历，寻找某个点，他的7邻域是个凸曲线(因为寻找上轮廓过程中保证了函数是连续的，所以不会有奇值点)
+				vector<upper> uppers_sort;
+				for (int ei = 0; ei < uppers.size(); ei++) { uppers_sort.push_back(uppers[ei]); }
+				// 显示上轮廓
+				waitKey();
+				sort(uppers_sort.begin(), uppers_sort.end(), SortByUp);
+				// 存储切割点，anchors存放的是分割点的序号，并不是坐标和值
+				vector<int> anchors;
+				// 存放anchors对应的极值点
+				vector<extremer> extremers;
+				int usize = uppers.size();
+
+				if (wihi < 0.6) { usize = 0; }
+
+
+				cout << "分割size为：" << usize << ", 分割点为： [";
+				for (int ei = 0; ei < uppers_sort.size(); ei++)
 				{
-					// 要防止过分割
-					int ax = uppers[anchors[ei]].x;
-					if (ax - true_anchors[pp] > close_thresh) 
+					// 领域空间分为两边走，往左往右走，寻找导数小于0的两个点，如果找的到那么这个点就是极小值点
+					int uindex = uppers_sort[ei].x;
+					int res = uppers_sort[ei].y;
+					bool left_all_small = true;
+					int left_gradient = 2;
+					bool right_all_small = true;
+					int right_gradient = 2;
+					int lindex = uindex - 1;
+					int rindex = uindex + 1;
+					for (; lindex >= 0; lindex--)
 					{
-						true_anchors.push_back(ax); pp++;
-						max_xs.push_back(ax); min_xs.push_back(ax);
+						if ((uppers[lindex].y - uppers[lindex + 1].y) < 0) { left_gradient--; if (left_gradient == 0) break; }
+						if ((uppers[lindex].y - uppers[lindex + 1].y) > 0) { left_all_small = false; break; }
+
 					}
-					else 
+					for (; rindex < usize; rindex++)
 					{
-						if (ax > max_xs[pp - 1]) { max_xs[pp - 1] = ax; }
-						if (ax < min_xs[pp - 1]) { min_xs[pp - 1] = ax; }
+						if ((uppers[rindex].y - uppers[rindex - 1].y) < 0) { right_gradient--; if (right_gradient == 0) break; }
+						if ((uppers[rindex].y - uppers[rindex - 1].y) > 0) { right_all_small = false; break; }
+					}
+
+					if (left_all_small && right_all_small && (left_gradient == 0) && (right_gradient == 0))
+					{
+						anchors.push_back(uindex); cout << uindex << ",";
+						// 存放进 极值点 vector
+						extremers.push_back({ {uindex, y}, lindex, rindex });
 					}
 				}
-				for (int ei=1; ei < true_anchors.size();ei++)
-				{
-					true_anchors[ei] = min_xs[pp - 1] + (max_xs[pp - 1] - min_xs[pp - 1]) / 2;
-				}
-				true_anchors.push_back(width);
-				cout << endl;
-				// 按照上面的分割点分割区域然后识别，最后合在一起
-				// 注意上面给anchor添加了图片的两个端点
+				cout << "]";
 
-				
-				for (int ei = 0; ei < true_anchors.size()-1; ei++)
+				vector<float> responses;
+				bool is_singular = false;
+
+				if (anchors.size() > 0)
 				{
-					//Mat mmser = final_mser_roi.colRange(max(0, true_anchors[ei]-1), min(true_anchors[ei + 1]+1, width));
-					Mat mmser = final_mser_roi.colRange(max(0, true_anchors[ei]), min(true_anchors[ei + 1], width));
-					vector<float> v = getHogData(mmser);
+					// 整理一次分割点，分割点过近的当做一个分割点，true_anchors存放的是分割点的坐标
+					// 一般分割最多就是3分割，为了增加容错性，给他再少个2（主要是因为数字可能比较集中）
+					int close_thresh = uppers.size() / 3 - 2;
+					cout << "close_thresh: " << close_thresh << endl;
+					vector<int> true_anchors;
+					//vector<int> max_xs;
+					//vector<int> min_xs;
+					// 存储符合条件的极值点的序号
+					vector<int> true_extremers;
+					true_anchors.push_back(0);
+					int pp = 0;
+					// 整理分割点，把相近的分割点合为一个分割点（合后的分割点在中间）
+					for (int ei = 0; ei < anchors.size(); ei++)
+					{
+						// 要防止过分割
+						int ax = uppers[anchors[ei]].x;
+						if (abs(ax - true_anchors[pp]) > close_thresh)
+						{
+							true_anchors.push_back(ax); pp++;
+							//max_xs.push_back(ax); min_xs.push_back(ax);
+							true_extremers.push_back(ei);
+						}
+						else
+						{
+							//if (pp >= 1)
+							//{
+							//	if (ax > max_xs[pp - 1]) { max_xs[pp - 1] = ax; }
+							//	if (ax < min_xs[pp - 1]) { min_xs[pp - 1] = ax; }
+							//}
+						}
+					}
+					for (int ei = 1; ei < true_anchors.size(); ei++)
+					{
+						//true_anchors[ei] = min_xs[ei - 1] + (max_xs[ei - 1] - min_xs[ei - 1]) / 2;
+						int emIndex = true_extremers[ei - 1];
+						true_anchors[ei] = (extremers[emIndex].lindex + extremers[emIndex].rindex) / 2;
+					}
+					true_anchors.push_back(width);
+					// 按照从小到大排序分割点
+					sort(true_anchors.begin(), true_anchors.end());
+
+					// 输出true_anchors
+					cout << endl;
+					cout << "第一次--true_anchors: [";
+					for (int ei = 0; ei < true_anchors.size(); ei++) { cout << true_anchors[ei] << ","; }
+					cout << "]" << endl;
+
+					// 无论如何，最后还得来一次过分割检查，把在邻域内的相近分割点融合
+					vector<int> temp_anchors;
+					temp_anchors.push_back(0);
+					// 下面是记录每个极值点的左右边界
+					vector<int> max_xs;
+					vector<int> min_xs;
+					int pp2 = 0;
+					for (int eii = 1; eii < true_anchors.size() - 1; eii++)
+					{
+						int ax = true_anchors[eii];
+						if (abs(ax - temp_anchors[pp2]) > close_thresh)
+						{
+							temp_anchors.push_back(ax); pp2++;
+							max_xs.push_back(ax); min_xs.push_back(ax);
+						}
+						else
+						{
+							// 至少有一个符合条件的点进来后才可以开始计算max和min
+							if (pp2 >= 1)
+							{
+								if (ax > max_xs[pp2 - 1]) { max_xs[pp2 - 1] = ax; }
+								if (ax < min_xs[pp2 - 1]) { min_xs[pp2 - 1] = ax; }
+							}
+						}
+					}
+					for (int eii = 1; eii < temp_anchors.size() - 1; eii++)
+					{
+						temp_anchors[eii] = (max_xs[eii - 1] + min_xs[eii - 1]) / 2;
+					}
+					temp_anchors.push_back(width);
+					true_anchors = temp_anchors;
+
+					// 输出true_anchors
+					cout << endl;
+					cout << "第二次--true_anchors: [";
+					for (int ei = 0; ei < true_anchors.size(); ei++) { cout << true_anchors[ei] << ","; }
+					cout << "]" << endl;
+					// 按照上面的分割点分割区域然后识别，最后合在一起
+					// 注意上面给anchor添加了图片的两个端点
+
+
+					for (int ei = 0; ei < true_anchors.size() - 1; ei++)
+					{
+						//Mat mmser = final_mser_roi.colRange(max(0, true_anchors[ei]-1), min(true_anchors[ei + 1]+1, width));
+						Mat mmser = final_mser_roi.colRange(max(0, true_anchors[ei]), min(true_anchors[ei + 1], width));
+						vector<float> v = getHogData(mmser);
+						Mat testData(1, 144, CV_32FC1, v.data());
+						int response = svm->predict(testData);
+						imshow("[分割后的小图]", mmser);
+						waitKey();
+						// response = -1表示这个不是数字，response = 10表示这个数字是融合数字
+						if (response < 0 || response == 10) { is_singular = true; break; }
+						else { responses.push_back(response); }
+
+					}
+				}
+
+				else
+				{
+					// 直接预测
+					vector<float> v = getHogData(final_mser_roi);
 					Mat testData(1, 144, CV_32FC1, v.data());
 					int response = svm->predict(testData);
-					imshow("[分割后的小图]", mmser);
-					waitKey();
 					// response = -1表示这个不是数字，response = 10表示这个数字是融合数字
-					if (response < 0 || response == 10) { is_singular = true; break; }
+					if (response < 0 || response == 10) { is_singular = true; }
 					else { responses.push_back(response); }
-
 				}
-			}
-
-			else 
-			{
-				// 直接预测
-				vector<float> v = getHogData(final_mser_roi);
-				Mat testData(1, 144, CV_32FC1, v.data());
-				int response = svm->predict(testData);
-				// response = -1表示这个不是数字，response = 10表示这个数字是融合数字
-				if (response < 0 || response == 10) { is_singular = true; }
-				else { responses.push_back(response); }
-			}
 
 
-			if (is_singular) { cout << "is_singular: true" << endl; }
-			else 
-			{
-				cout << "merge_response: ";
-				for (int ei = 0; ei < responses.size(); ei++)
+				if (is_singular) { cout << "is_singular: true" << endl; }
+				else
 				{
-					cout << responses[ei];
+					cout << "merge_response: ";
+					for (int ei = 0; ei < responses.size(); ei++)
+					{
+						cout << responses[ei];
+					}
+					cout << endl;
+
+					// 存放到singleArea中让后面继续融合
+					Point ncenter = Point(candidates[ix].x + candidates[ix].width / 2, candidates[ix].y + candidates[ix].height / 2);
+					rectangle(roi_mser_2, candidates[ix], Scalar(255, 255, 255), 2);
+					circle(roi_mser_2, ncenter, 2, color, -1);
+					imshow("roi_mser_2", roi_mser_2);
+					waitKey(0);
+
+					// 为了之后的运算
+					sas.push_back({ responses, ix, ncenter });
+					numberAreaCenters.push_back(ncenter);
 				}
-				cout << endl;
-
-				// 存放到singleArea中让后面继续融合
-				Point ncenter = Point(candidates[ix].x + candidates[ix].width / 2, candidates[ix].y + candidates[ix].height / 2);
-				rectangle(roi_mser_2, candidates[ix], Scalar(255, 255, 255), 2);
-				circle(roi_mser_2, ncenter, 2, color, -1);
-				imshow("roi_mser_2", roi_mser_2);
-				waitKey(0);
-
-				// 为了之后的运算
-				sas.push_back({ responses, ix, ncenter });
-				numberAreaCenters.push_back(ncenter);
 			}
+
+
+			imshow("roi_dst_clone_", roi_dst_clone_);
+			imshow("roi_mser", roi_mser);
+			waitKey(0);
+
+			// 如果非异值点过少，极大可能是角度选择不对，就选第二个角度进行重新识别，需要清空一下sas
+			if (sas.size() < 3) { sas.clear(); continue; }
+			else { break; }
 		}
 
 
 
-		imshow("roi_dst_clone_", roi_dst_clone_);
 
-		imshow("roi_mser", roi_mser);
-		waitKey(0);
 
 
 
@@ -2677,9 +2791,7 @@ int main()
 
 
 
-		
-
-
+	
 		// 规定融合的最短距离
 		float merge_distance = 30;
 		float min_merge_distance = 10;
@@ -3087,9 +3199,13 @@ int train()
 		string src = raw[0];
 		int label = str2int(raw[1]);
 		Mat mat = imread(src, IMREAD_GRAYSCALE);
+		Mat blur_mat;
 		// 稍微给点模糊
-		blur(mat, mat, Size(3, 3));
+		blur(mat, blur_mat, Size(3, 3));
 		trainingData.push_back(getHogData(mat));
+		labels.push_back(label);
+		// 模糊的数据也一起训练
+		trainingData.push_back(getHogData(blur_mat));
 		labels.push_back(label);
 		// 这里做数据增强，比如镜像，翻转（原因是可能会出现这些情况）
 		//for (int flipCode=-1; flipCode <2; flipCode++)
