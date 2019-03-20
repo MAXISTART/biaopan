@@ -5,11 +5,15 @@
 #include <direct.h>
 #include <unordered_map>
 #include <vector>
-
+#include "opencv2/imgproc.hpp"
+#include "opencv2/ximgproc.hpp"
+#include "opencv2/imgcodecs.hpp"
+#include "opencv2/highgui.hpp"
 #include "BiaopanDetector.h"
 
 #define random(x) (rand()%x)+1
 
+using namespace cv::ximgproc;
 using namespace std;
 
 
@@ -18,6 +22,20 @@ void BiaopanDetector::initBiaopan()
 {
 	// 加载svm
 	svm = cv::ml::SVM::load(modelPath);
+	// 初始化lsd
+	int    length_threshold = 10;
+	float  distance_threshold = 1.41421356f;
+	double canny_th1 = 50.0;
+	double canny_th2 = 50.0;
+	int    canny_aperture_size = 3;
+	bool   do_merge = true;
+	fld = createFastLineDetector(
+		length_threshold,
+		distance_threshold,
+		canny_th1,
+		canny_th2,
+		canny_aperture_size,
+		do_merge);
 }
 
 
@@ -779,7 +797,7 @@ Mat BiaopanDetector::getRoiDst(Mat& img, string& id, float& rotation)
 		rotationMatrix = getRotationMatrix2D(center, -rotation, 1);//计算旋转的仿射变换矩阵 
 
 		// 仍然用椭圆检测来计算，当然也可以用 计算二维码的面积来确定 像素距离，又因为表盘大概大小也是可知的，就可以推出表盘的大致位置，但是不好用
-		int scaleSize = 8;
+		int scaleSize = initScaleSize;
 		// 默认是模糊度为7，根据情况调大一点
 		vector<Ellipse> ells = getElls(img, scaleSize, 7);
 		// 寻找包含二维码中心点的那个椭圆，找到的第一个就break
@@ -842,6 +860,27 @@ Mat BiaopanDetector::getRoiDst(Mat& img, string& id, float& rotation)
 
 	return roi_dst;
 }
+
+
+// 直接具体检测表盘的圆轮廓，同时会赋值ac_center
+RotatedRect BiaopanDetector::getAcOutline(Mat& roi_dst)
+{
+
+
+	int scaleSize = 1;
+	vector<Ellipse> ells = getElls(roi_dst, scaleSize, 5);
+
+
+	RotatedRect acEl;
+	acEl.angle = ells[0]._rad / pi * 180;
+	acEl.center = Point(ells[0]._xc, ells[0]._yc);
+	acEl.size = Size2f(2 * ells[0]._a, 2 * ells[0]._b);
+
+	
+	BiaopanDetector::ac_el = acEl;
+	return acEl;
+}
+
 
 
 // 表盘中心检测，传入的是roi_dst，输出的是表盘中心位置
@@ -1012,8 +1051,8 @@ float BiaopanDetector::getPointer(Mat& roi_dst, Point& ac_center)
 	}
 
 	// 创建检测器
-	Ptr<LineSegmentDetector> ls = createLineSegmentDetector(LSD_REFINE_STD);
-	ls->detect(roi_thresh, tLines_detect);
+	imwrite("D:\\VcProject\\MvProj\\Samples\\VC\\VS\\test\\4.jpg", roi_thresh);
+	fld->detect(roi_thresh, tLines_detect);
 	// 给他区分尾点和非尾点
 	for (int i = 0; i < tLines_detect.size(); i++)
 	{
@@ -1044,8 +1083,8 @@ float BiaopanDetector::getPointer(Mat& roi_dst, Point& ac_center)
 			circle(BiaopanDetector::rs1, Point(dl[2], dl[3]), 2, Scalar(0, 255, 255), -1);
 		}
 	}
-	ls->drawSegments(show, tLines_pack);
-	ls->drawSegments(BiaopanDetector::rs1, tLines_pack);
+	fld->drawSegments(show, tLines_pack);
+	fld->drawSegments(BiaopanDetector::rs1, tLines_pack);
 
 
 	// 下面拼合直线并且寻找最大的
@@ -1848,7 +1887,7 @@ float BiaopanDetector::readAngle(vector<MergeArea>& merges, float pointerAngle)
 }
 
 // 示数读取，传入的是roi_dst，椭圆中心（用来计算mser区域中心与表盘半径的夹角），指针夹角，角度信息，是否投票获取角度，输出的是示数
-// 他会优先调用拟合椭圆，如果拟合不了椭圆，那么就调用检测椭圆，以检测到的椭圆作为拟合圆去做。
+// 之前是用椭圆拟合，这里放弃椭圆拟合，改用表盘具体外轮廓
 float BiaopanDetector::readRoi(Mat& roi_dst, Point& ac_center, float pointerAngle, float mserAngle, bool isVoted)
 {
 
@@ -1868,27 +1907,21 @@ float BiaopanDetector::readRoi(Mat& roi_dst, Point& ac_center, float pointerAngl
 	Mat roi_thresh;
 	equalizeHist(rMat, roi_thresh);
 
-	// 调用椭圆拟合
-	RotatedRect bestEl = fitELL(rMat, ac_center);
-	if (!bestEl.angle)
-	{
-		int scaleSize = 1;
-		// 这里模糊程度就不用这么高了
-		Ellipse el = getElls(rMat, scaleSize, 5)[0];
-		bestEl.angle = el._rad / pi * 180;
-		bestEl.center = Point(el._xc, el._yc);
-		bestEl.size = Size2f(2 * el._a, 2 * el._b);
-	}
+	// 直接用表盘外轮廓
+	RotatedRect bestEl = ac_el;
+	// 但是还要应用旋转
+	bestEl.angle = bestEl.angle - mserAngle;
 
 	// 画出满足条件的区域
-	RotatedRect bestEl_scale1 = RotatedRect(bestEl.center, Size2f(bestEl.size.width * 0.86, bestEl.size.height * 0.86), bestEl.angle);
+	RotatedRect bestEl_scale0 = RotatedRect(bestEl.center, Size2f(bestEl.size.width, bestEl.size.height), bestEl.angle);
+	RotatedRect bestEl_scale1 = RotatedRect(bestEl.center, Size2f(bestEl.size.width * 0.75, bestEl.size.height * 0.75), bestEl.angle);
 	RotatedRect bestEl_scale2 = RotatedRect(bestEl.center, Size2f(bestEl.size.width * 0.4, bestEl.size.height * 0.4), bestEl.angle);
+	// 画出中心
+	circle(show, Point(bestEl.center.x, bestEl.center.y), 3, Scalar(0, 0, 0), -1);
 	ellipse(show, bestEl_scale1, Scalar(200, 100, 150));
 	ellipse(show, bestEl_scale2, Scalar(110, 30, 250));
+	ellipse(show, bestEl_scale0, Scalar(0, 0, 0), 3);
 
-
-	ellipse(BiaopanDetector::rs2, bestEl_scale1, Scalar(200, 100, 150));
-	ellipse(BiaopanDetector::rs2, bestEl_scale2, Scalar(110, 30, 250));
 
 	// mser检测
 	vector<Rect> candidates = simpleMser(rMat);
@@ -1907,7 +1940,7 @@ float BiaopanDetector::readRoi(Mat& roi_dst, Point& ac_center, float pointerAngl
 		float ndistance = sqrt(pow(newsc.x, 2) / pow(bestEl.size.width / 2, 2) + pow(newsc.y, 2) / pow(bestEl.size.height / 2, 2));
 		// 这里的椭圆需要往内部缩一下，去除过多的咋点，比如刻度线
 		// 同时又不能太里面，因为数字是在中心一定距离外的。
-		if (ndistance >= 0.86 || ndistance < 0.4) { continue; }
+		if (ndistance >= 0.75 || ndistance < 0.4) { continue; }
 
 
 
@@ -1927,7 +1960,7 @@ float BiaopanDetector::readRoi(Mat& roi_dst, Point& ac_center, float pointerAngl
 		{
 			// 这里只标出被包含在区域内的mser并且识别成功的
 			rectangle(show, candidates[i], Scalar(255, 255, 0), 1);
-			rectangle(BiaopanDetector::rs2, candidates[i], Scalar(255, 255, 0), 1);
+
 			// 渲染成singleArea
 			sas.push_back({ response, i, mserCenter });
 		}
@@ -1950,10 +1983,8 @@ float BiaopanDetector::readRoi(Mat& roi_dst, Point& ac_center, float pointerAngl
 		for (int j = 0; j < ccs.size(); ++j) 
 		{
 			rectangle(show, candidates[ccs[j]], Scalar(255, 255, 255), 1);
-			rectangle(BiaopanDetector::rs2, candidates[ccs[j]], Scalar(255, 255, 255), 1);
 		}
 		circle(show, mergeCenter, 2, Scalar(255, 255, 255), -1);
-		circle(BiaopanDetector::rs2, mergeCenter, 2, Scalar(255, 255, 255), -1);
 	}
 
 
@@ -1979,6 +2010,8 @@ float BiaopanDetector::readRoi(Mat& roi_dst, Point& ac_center, float pointerAngl
 	//imshow("readRoi", show);
 	//waitKey();
 
+	rs2 = show;
+
 	return finalValue;
 }
 
@@ -1987,16 +2020,26 @@ float BiaopanDetector::readRoi(Mat& roi_dst, Point& ac_center, float pointerAngl
 // 总的入口方法
 float BiaopanDetector::detect(Mat& mat, string& id)
 {
-	// 先转成黑白
+	// 检测是否黑白，如果不是黑白就转成黑白
 	Mat img;
-	cvtColor(mat, img, COLOR_BGR2GRAY);
+	if (mat.channels() > 1)
+	{
+		cvtColor(mat, img, COLOR_BGR2GRAY);
+	}
+	else
+	{
+		img = mat;
+	}
 	// 表盘区域，使用roi之前先检测该roi是否检测成功
 	float rotation;
 	Mat roi_dst = getRoiDst(img, id, rotation);
 	if (roi_dst.cols > 0)
 	{
+		// 表盘轮廓
+		RotatedRect acEl = getAcOutline(roi_dst);
+		if (!acEl.angle) { cout << "表盘外轮廓识别错误，请调整光源或者角度 " << endl; return -2; }
 		// 表盘中心
-		Point ac_center = getAcCenter(roi_dst);
+		Point ac_center = Point(acEl.center.x, acEl.center.y);
 		// 表盘指针角度
 		float pointerAngle = getPointer(roi_dst, ac_center);
 		// 读取表盘
@@ -2007,23 +2050,27 @@ float BiaopanDetector::detect(Mat& mat, string& id)
 }
 
 
-// 直线检测，传入roi_dst，直线
 
-void main()
+void main_test()
 {
 	string img_path = "D:\\VcProject\\biaopan\\biaopan1\\data\\2.jpg";
+	img_path = "D:\\VcProject\\MvProj\\Samples\\VC\\VS\\test\\6.jpg";
 
 	Mat img = imread(img_path, 0);
 	BiaopanDetector detector;
 	detector.initBiaopan();
+
 	string id = "第一个表盘";
 	// 表盘区域，使用roi之前先检测该roi是否检测成功
 	float rotation;
 	Mat roi_dst = detector.getRoiDst(img, id, rotation);
 	if (roi_dst.cols > 0)
 	{
+		// 表盘轮廓
+		RotatedRect acEl = detector.getAcOutline(roi_dst);
+		if (!acEl.angle) { cout << "表盘外轮廓识别错误，请调整光源或者角度 " << endl; return; }
 		// 表盘中心
-		Point ac_center = detector.getAcCenter(roi_dst);
+		Point ac_center = Point(acEl.center.x, acEl.center.y);
 		// 表盘指针角度
 		float pointerAngle = detector.getPointer(roi_dst, ac_center);
 		// 读取表盘
@@ -2034,4 +2081,64 @@ void main()
 	imshow("rs1", detector.rs1);
 	imshow("rs2", detector.rs2);
 	waitKey();
+}
+
+
+
+
+
+void fldTest()
+{
+	Mat image = imread("D:\\VcProject\\MvProj\\Samples\\VC\\VS\\test\\3.jpg", 0);
+	// Create FLD detector
+	// Param               Default value   Description
+	// length_threshold    10            - Segments shorter than this will be discarded
+	// distance_threshold  1.41421356    - A point placed from a hypothesis line
+	//                                     segment farther than this will be
+	//                                     regarded as an outlier
+	// canny_th1           50            - First threshold for
+	//                                     hysteresis procedure in Canny()
+	// canny_th2           50            - Second threshold for
+	//                                     hysteresis procedure in Canny()
+	// canny_aperture_size 3             - Aperturesize for the sobel
+	//                                     operator in Canny()
+	// do_merge            false         - If true, incremental merging of segments
+	//                                     will be perfomred
+	int    length_threshold = 10;
+	float  distance_threshold = 1.41421356f;
+	double canny_th1 = 50.0;
+	double canny_th2 = 50.0;
+	int    canny_aperture_size = 3;
+	bool   do_merge = true;
+	Ptr<FastLineDetector> fld = createFastLineDetector(
+		length_threshold,
+		distance_threshold,
+		canny_th1,
+		canny_th2,
+		canny_aperture_size,
+		do_merge);
+	vector<Vec4f> lines_fld;
+
+	fld->detect(image, lines_fld);
+	// Show found lines with FLD
+	Mat line_image_fld(image);
+	fld->drawSegments(line_image_fld, lines_fld);
+	imshow("FLD result", line_image_fld);
+	waitKey();
+
+
+}
+
+
+int tt()
+{
+	Mat roi_thresh = imread("D:\\VcProject\\MvProj\\Samples\\VC\\VS\\test\\3.jpg", 0);
+	
+	vector<Vec4f> tLines_detect;
+	
+	Ptr<LineSegmentDetector> ls = createLineSegmentDetector();
+	ls->detect(roi_thresh, tLines_detect);
+	cout << tLines_detect.size() << endl;
+	waitKey();
+	return 0;
 }

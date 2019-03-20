@@ -37,7 +37,7 @@ This class implements a very fast ellipse detector, codename: YAED (Yet Another 
 #include <unordered_map>
 #include <vector>
 
-//#include "Ellipse.h"
+
 #include "common.h"
 #include <time.h>
 
@@ -68,6 +68,7 @@ struct EllipseData
 	vector<float> Sa;
 	vector<float> Sb;
 };
+
 
 
 class CEllipseDetectorYaed
@@ -133,7 +134,7 @@ public:
 
 	//Detect the ellipses in the gray image
 	void Detect(Mat1b& gray, vector<Ellipse>& ellipses);
-	
+
 	//Draw the first iTopN ellipses on output
 	void DrawDetectedEllipses(Mat3b& output, vector<Ellipse>& ellipses, int iTopN=0, int thickness=2);
 	

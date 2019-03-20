@@ -7,18 +7,17 @@
 #include <direct.h>
 #include <unordered_map>
 
-
+#include "opencv2/ximgproc.hpp"
 #include "QRDetector.h" 
 
 #include<time.h>
 #define random(x) (rand()%x)+1
 
 
-#define DATA_DIR "D:\\OpenCV\\bin\\toy_data\\"
 #define pi 3.1415926
 
 using namespace std;
-
+using namespace cv::ximgproc;
 
 
 
@@ -83,21 +82,23 @@ class BiaopanDetector
 
 public:
 	/*一些参量*/
+	int initScaleSize = 4;
+
 	float el_ab_p = 0.4;						// 筛选椭圆的条件，椭圆的长短轴之比
 	int min_vec_num;							// 检测表盘时，表盘里面至少需要多少条面向中心的直线
 	int roi_width = 400;						// 检测区域 roi_dst 的大小。
 
-	int center_search_radius = 35;				// 表盘中心检测过程中，表盘检测范围的半径	
+	int center_search_radius = 50;				// 表盘中心检测过程中，表盘检测范围的半径	
 	float center2line = 30;						// 表盘中心检测过程中，允许直线距离表盘中心的距离
 
-	int erode_times = 3;						// 指针检测前图像腐蚀的次数，腐蚀越多次，检测到的直线更少
+	int erode_times = 2;						// 指针检测前图像腐蚀的次数，腐蚀越多次，检测到的直线更少
 	float line_search_radius = 80;				// 指针检测过程中，合并直线时，每个直线自己的搜索范围
 	float lineMaxAngle = 4;						// 指针检测过程中，合并直线时，直线与直线之间最大的夹角
 
 	int sangle = 40;							// 一椭圆拟合过程中，一个扇区的角度大小。
 	int ranTimes = 1500;						// 一次椭圆拟合过程中，随机的最大次数
 	float ell_accept_thresh = 8;				// 允许椭圆拟合中支持点最大的远离程度，这里的程度是乘上椭圆长轴的（具体看算法）
-	float ell_accept_distance = 20;				// 椭圆拟合中，允许拟合圆与 ac_center 的最大距离
+	float ell_accept_distance = 35;				// 椭圆拟合中，允许拟合圆与 ac_center 的最大距离，适当增大距离，可以提高拟合圆几率
 	float ellsize2roisize = 0.35;				// 椭圆拟合之中，允许拟合圆占 roi_dst 的最小比例
 	float ell_ab_p = 0.85;						// 椭圆拟合中，除了面积要求，还要有长短轴比的要求，而且这个比椭圆检测的要求要高
 
@@ -109,16 +110,17 @@ public:
 	int mserRadius = 3;							// mser时分割到的矩阵再往外扩张的距离，这个距离对识别非常重要，尽量在数字3以上
 
 
+	RotatedRect ac_el;							// 存储表盘具体外轮廓
 	Mat rs1;									// roi检测+二维码检测结果+center+指针，roi肯定包含了椭圆检测的信息
 	Mat rs2;									// 椭圆拟合+矫正
 	Mat rs3;									// mser结果以及merge
 
 
 	Ptr<cv::ml::SVM> svm;
-	string modelPath = "D:\\VcProject\\biaopan\\data\\model.txt";
+	string modelPath = "C:\\model.txt";
 
 	QRDetector qrdetect;
-
+	Ptr<FastLineDetector> fld;
 
 	// 初始化一些参数
 	void initBiaopan();
@@ -153,6 +155,8 @@ public:
 	vector<Ellipse> getElls(Mat& img, int& scaleSize, int blurSize);
 	// 获取表盘中心
 	Point getAcCenter(Mat& roi_dst);
+	// 直接具体检测表盘的圆轮廓
+	RotatedRect getAcOutline(Mat& roi_dst);
 	// 获取表盘指针
 	float getPointer(Mat& roi_dst, Point& ac_center);
 	// 拼合直线，传入直线群（vec4f中前两个值为头点，后两个值为尾点），输出的是直线群的序号组合

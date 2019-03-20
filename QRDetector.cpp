@@ -80,10 +80,11 @@ vector<BCoder> QRDetector::detect(Mat& img)
 		que.push_back(vp[3]);
 		que.push_back(vp[2]);
 
-		float total = 0;
 		// 获取角度方向及角度
 		cout << "以下五个旋转值理应相差不大，如果相差很大， 那就是有问题了" << endl;
-		for (int i=0;i<4;i++)
+
+		vector<float> vecAngles;
+		for (int i = 0; i < 4; i++)
 		{
 			float dx = que[i].x - x;
 			float dy = -que[i].y + y;
@@ -95,14 +96,31 @@ vector<BCoder> QRDetector::detect(Mat& img)
 
 			vecAngle -= (45 + i * 90);
 			if (vecAngle < 0) { vecAngle = 360 + vecAngle; }
-			cout << vecAngle << endl;
-			total += vecAngle;
-
+			vecAngles.push_back(vecAngle);
 		}
-		float average = total / 4;
-		coder.rotation = average;
 
-		cout << average << endl;
+		// 这里需要修正下，防止四个角度差距过大
+		float reference = vecAngles[0];
+		cout << reference << endl;
+		float total = 0;
+		for (int i = 1; i < 4; i++)
+		{
+			float dis = abs(vecAngles[i] - reference);
+			if (dis < 10) { total += dis; }
+			// 如果差距太大，有可能是相差了一个周期而已
+			else
+			{
+				dis = abs(dis - 360);
+				total += dis;
+			}
+			cout << reference + dis << endl;
+		}
+
+		float average = total / 3;
+
+		coder.rotation = reference + average;
+
+		cout << reference + average << endl;
 		cout << "请确保二维码贴的方向是正确的" << endl;
 		cout << "===================================" << endl;
 
@@ -121,8 +139,8 @@ vector<BCoder> QRDetector::detect(Mat& img)
 
 		resize(img_show, img_show, Size(400, cvRound(float(img_show.rows) / float(img_show.cols) * 400)));
 
-		imshow("img_show", img_show);
-		waitKey();
+		//imshow("img_show", img_show);
+		//waitKey();
 	}
 	return coders;
 
