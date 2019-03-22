@@ -613,11 +613,20 @@ void BiaopanDetector::nms(vector<Rect>& proposals, const double nms_threshold)
 }
 
 
-// 计算坐标旋转后的点，这里输入的坐标是标准坐标系，输出的也是标准坐标系
+// 计算坐标旋转后的点，这里输入的坐标是标准坐标系，输出的也是标准坐标系,记得是逆时针旋转
+Point BiaopanDetector::rotate(float theta, Point a)
+{
+	float x = a.x;
+	float y = a.y;
+	return Point(int(cos(theta)*x - sin(theta)*y), int(sin(theta)*x + cos(theta)*y));
+}
+
+// 计算坐标旋转后的点，这里输入的坐标是标准坐标系，输出的也是标准坐标系,记得是逆时针旋转
 Point BiaopanDetector::rotate(float theta, float x, float y)
 {
 	return Point(cos(theta)*x - sin(theta)*y, sin(theta)*x + cos(theta)*y);
 }
+
 
 // 切换到椭圆坐标，这里输入的坐标是图像坐标系，输出的是标准坐标系（先平移后旋转）
 Point BiaopanDetector::origin2el(Point2f& center, float theta, Point& origin)
@@ -1051,7 +1060,7 @@ float BiaopanDetector::getPointer(Mat& roi_dst, Point& ac_center)
 	}
 
 	// 创建检测器
-	imwrite("D:\\VcProject\\MvProj\\Samples\\VC\\VS\\test\\4.jpg", roi_thresh);
+	imwrite("1.jpg", roi_thresh);
 	fld->detect(roi_thresh, tLines_detect);
 	// 给他区分尾点和非尾点
 	for (int i = 0; i < tLines_detect.size(); i++)
@@ -1096,6 +1105,7 @@ float BiaopanDetector::getPointer(Mat& roi_dst, Point& ac_center)
 	for (int i = groups.size() - 1; i >= 1; --i)
 	{
 		vector<int>& group = groups[i];
+
 		float total_length = 0;
 		for (int j = 0; j <= group.size() - 1; ++j)
 		{
@@ -2083,7 +2093,47 @@ void main_test()
 	waitKey();
 }
 
+// codeLen 的长度是 
+void  BiaopanDetector::testThreshDetect(Mat& img, Point& ac_pos, float& ac_distance, float& ac_angle, float& angle_given, float& codeLen, float& dd)
+{
+	BiaopanDetector detector;
+	detector.initBiaopan();
+	Point img_center = Point(img.cols / 2, -img.rows / 2);
+	// 根据摄像机给定的角度进行图像矫正
+	// rotationMatrix的第二个参数是逆时针旋转角度，刚好我们的mserAngle表示的是检测到表盘的顺时针旋转角度，要矫正就需要逆时针旋转
+	QRDetector qr;
+	vector<BCoder> coders = qr.detect(img);
+	BCoder bc = coders[0];
+	// 得到角度
+	ac_angle = bc.rotation - angle_given;
+	// 得到边长
+	float dis_a = detector.point2point(bc.a, bc.c);
+	float dis_b = detector.point2point(bc.b, bc.d);
 
+	// 得到实际距离与像素距离比值
+	float ratio =  (dis_a + dis_b) / (2 * sqrt(2) * codeLen);
+	// 计算相对坐标，并且转为标准坐标系，因为存在angle_given，需要再旋转一下坐标
+	Point rPos = Point(bc.center.x - img_center.x, -bc.center.y - img_center.y);
+
+
+
+	rPos = detector.rotate(angle_given, rPos);
+	ac_pos = Point((float)rPos.x / ratio, (float)rPos.y / ratio);
+	
+	
+	
+	float kk = (float)detector.point2point(bc.a, bc.b) / ratio;
+
+	double ss = dis_a * dis_b;
+	
+	double biaoding_ss = 230281;
+	double dis = sqrt(600 * 600 * biaoding_ss / ss);
+
+
+	circle(img, rPos, 10, Scalar(255, 255, 255));
+	circle(img, img_center, 10, Scalar(0, 0, 0));
+
+}
 
 
 

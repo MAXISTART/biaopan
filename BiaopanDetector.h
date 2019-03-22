@@ -183,8 +183,8 @@ public:
 	// 获取hog向量
 	vector<float> getHogData(Mat& originImg);
 
-
-
+	// 计算坐标旋转后的点，这里输入的坐标是标准坐标系，输出的也是标准坐标系,记得是逆时针旋转
+	Point rotate(float theta, Point a);
 	// 计算坐标旋转后的点，这里输入的坐标是标准坐标系，输出的也是标准坐标系
 	Point rotate(float theta, float x, float y);
 	// 切换到椭圆坐标，这里输入的坐标是图像坐标系，输出的是标准坐标系（先平移后旋转）
@@ -195,6 +195,9 @@ public:
 
 	// 计算出一个向量与椭圆的, a是椭圆的第一个轴长，b是椭圆的第二个轴长，theta是椭圆的倾斜角，xx1 和 xx2代表与椭圆相交的直线，最终返回的是 与xx1xx2向量同方向的交点(p1是出发点)
 	Point anchor_on_el_line(float a, float b, float theta, Point2f& center, Point& xx1, Point& xx2);
+
+
+	void  testThreshDetect(Mat& img, Point& ac_pos, float& ac_distance, float& ac_angle, float& angle_given, float& codeLen, float& dd);
 
 
 
